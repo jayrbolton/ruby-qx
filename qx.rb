@@ -1,7 +1,7 @@
 require 'pg'
 require 'uri'
 
-class Pq
+class Qx
    
   # Initialize the database connection using a database url
   # Running this is required for #execute to work
@@ -20,7 +20,7 @@ class Pq
     return self
   end
 
-  # Parse a Pq expression tree into a single query string that can be executed
+  # Parse a Qx expression tree into a single query string that can be executed
   # http://www.postgresql.org/docs/9.0/static/sql-commands.html
   def self.parse(expr)
     if expr.is_a?(String) 
@@ -61,7 +61,7 @@ class Pq
   #   verbose: print the query
   #   csv: give data csv style with Arrays -- good for exports or for saving memory
   def execute(options={})
-    expr = Pq.parse(@tree).to_s.encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: '')
+    expr = Qx.parse(@tree).to_s.encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: '')
     puts expr if options[:verbose]
     result = @@cx.exec(expr)
     if options[:csv]
@@ -77,16 +77,16 @@ class Pq
   # -- Top-level clauses
 
   def self.select(*cols)
-    self.new(SELECT: cols.map{|c| Pq.quote_ident(c)})
+    self.new(SELECT: cols.map{|c| Qx.quote_ident(c)})
   end
   def self.insert_into(table_name)
-    self.new(INSERT_INTO: Pq.quote_ident(table_name))
+    self.new(INSERT_INTO: Qx.quote_ident(table_name))
   end
   def self.delete_from(table_name)
-    self.new(DELETE_FROM: Pq.quote_ident(table_name))
+    self.new(DELETE_FROM: Qx.quote_ident(table_name))
   end
   def self.update(table_name)
-    self.new(UPDATE: Pq.quote_ident(table_name))
+    self.new(UPDATE: Qx.quote_ident(table_name))
   end
 
   # -- Sub-clauses
@@ -94,45 +94,45 @@ class Pq
   # - SELECT sub-clauses
 
   def from(expr)
-    @tree[:FROM] = Pq.quote_ident(expr)
+    @tree[:FROM] = Qx.quote_ident(expr)
     self
   end
   def as(table_name)
-    @tree[:AS] = Pq.quote_ident(table_name)
+    @tree[:AS] = Qx.quote_ident(table_name)
     self
   end
 
   def where(expr, data={})
-    @tree[:WHERE] = [Pq.interpolate_expr(expr, data)]
+    @tree[:WHERE] = [Qx.interpolate_expr(expr, data)]
     self
   end
   def andWhere(expr, data={})
-    @tree[:WHERE].push(Pq.interpolate_expr(expr, data))
+    @tree[:WHERE].push(Qx.interpolate_expr(expr, data))
     self
   end
 
   def group_by(*cols)
-    @tree[:GROUP_BY] = cols.map{|c| Pq.quote_ident(c)}
+    @tree[:GROUP_BY] = cols.map{|c| Qx.quote_ident(c)}
     self
   end
   def group_by(*cols)
-    @tree[:GROUP_BY] = cols.map{|c| Pq.quote_ident(c)}
+    @tree[:GROUP_BY] = cols.map{|c| Qx.quote_ident(c)}
     self
   end
  
   def having(expr, data={})
-    @tree[:HAVING] = [Pq.interpolate_expr(data)]
+    @tree[:HAVING] = [Qx.interpolate_expr(data)]
     self
   end
   def andHaving(expr, data={})
-    @tree[:HAVING].push(Pq.interpolate_expr(data))
+    @tree[:HAVING].push(Qx.interpolate_expr(data))
     self
   end
 
   def order_by(*cols)
     orders = ['asc', 'desc']
     # Sanitize out invalid order keywords
-    @tree[:ORDER_BY] = cols.map{|col, order| [Pq.quote_ident(col), orders.include?(order.to_s.downcase) ? order.to_s : '']}
+    @tree[:ORDER_BY] = cols.map{|col, order| [Qx.quote_ident(col), orders.include?(order.to_s.downcase) ? order.to_s : '']}
     self
   end
 
@@ -148,12 +148,12 @@ class Pq
  
   def join(*joins)
     @tree[:JOIN] ||= []
-    @tree[:JOIN].concat(joins.map{|table, cond, data| [Pq.quote_ident(table), Pq.interpolate_expr(cond, data)]})
+    @tree[:JOIN].concat(joins.map{|table, cond, data| [Qx.quote_ident(table), Qx.interpolate_expr(cond, data)]})
     self
   end
   def left_join(*joins)
     @tree[:LEFT_JOIN] ||= []
-    @tree[:LEFT_JOIN].concat(joins.map{|table, cond, data| [Pq.quote_ident(table), Pq.interpolate_expr(cond, data)]})
+    @tree[:LEFT_JOIN].concat(joins.map{|table, cond, data| [Qx.quote_ident(table), Qx.interpolate_expr(cond, data)]})
     self
   end
 
@@ -175,17 +175,17 @@ class Pq
       cols = x.keys
       data = [x.values]
     end
-    @tree[:VALUES] = [cols.map{|c| Pq.quote_ident(c)}, data.map{|vals| vals.map{|d| Pq.quote(d)}}]
+    @tree[:VALUES] = [cols.map{|c| Qx.quote_ident(c)}, data.map{|vals| vals.map{|d| Qx.quote(d)}}]
     self
   end
 
   def returning(*cols)
-    @tree[:RETURNING] = cols.map{|c| Pq.quote_ident(c)}
+    @tree[:RETURNING] = cols.map{|c| Qx.quote_ident(c)}
     self
   end
 
   def set(hash)
-    @tree[:SET] = hash.map{|col, val| [Pq.quote_ident(col), Pq.quote(val)]}
+    @tree[:SET] = hash.map{|col, val| [Qx.quote_ident(col), Qx.quote(val)]}
     self
   end
 
@@ -197,7 +197,7 @@ class Pq
   def self.interpolate_expr(expr, data={})
     expr.to_s.gsub(/\$\w+/) do |match|
       val = data[match.gsub(/[ \$]*/, '').to_sym]
-      Array(val).map{|x| Pq.quote(x)}.join(", ")
+      Array(val).map{|x| Qx.quote(x)}.join(", ")
     end
   end
 
@@ -219,10 +219,10 @@ class Pq
     end
   end
   
-  # Double-quote sql identifiers (or parse Pq trees for subqueries)
+  # Double-quote sql identifiers (or parse Qx trees for subqueries)
   def self.quote_ident(expr)
-    if expr.is_a?(Pq)
-      Pq.parse(expr.tree)
+    if expr.is_a?(Qx)
+      Qx.parse(expr.tree)
     else
       expr.to_s.split('.').map{|s| "\"#{s}\""}.join('.')
     end
