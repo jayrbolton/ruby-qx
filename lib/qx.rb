@@ -56,6 +56,7 @@ class Qx
     end
     return str
   end
+  def parse; Qx.parse(@tree); end
 
   # options
   #   verbose: print the query
