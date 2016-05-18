@@ -72,7 +72,7 @@ class Qx
       data = result.map{|h| h}
     end
     result.clear
-    return data
+    return data.count <= 1 ? data.first : data
   end
 
   # -- Top-level clauses
@@ -201,7 +201,7 @@ class Qx
       expr = expr.where("id IN ($ids)", ids: Array(data))
     end
     result = expr.execute(options)
-    return result.count <= 1 ? result.first : result
+    return result
   end
 
   # -- utils
