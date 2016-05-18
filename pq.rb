@@ -1,0 +1,232 @@
+require 'pg'
+require 'uri'
+
+class Pq
+   
+  # Initialize the database connection using a database url
+  # Running this is required for #execute to work
+  def self.config(h)
+    db = URI.parse(h[:database_url])
+    @@cx = PG::Connection.open({host: db.host, port: db.port, user: db.user, password: db.password, dbname: db.path[1..-1]})
+    @@cx.type_map_for_results = PG::BasicTypeMapForResults.new @@cx
+    # Make certain we are using UTC
+    ENV['TZ'] = 'UTC'
+    @@cx.exec("set timezone='UTC';")
+    return @@cx
+  end
+
+  def initialize(tree)
+    @tree = tree
+    return self
+  end
+
+  # Parse a Pq expression tree into a single query string that can be executed
+  # http://www.postgresql.org/docs/9.0/static/sql-commands.html
+  def self.parse(expr)
+    if expr.is_a?(String) 
+      return expr # already parsed
+    elsif expr.is_a?(Array) 
+      return expr.join(",")
+    elsif expr[:SELECT]
+      str =  'SELECT '  + expr[:SELECT].join(", ")
+      str += ' FROM ' + expr[:FROM]
+      str += expr[:JOIN].map{|from, cond| " JOIN #{from} ON #{cond}"}.join if expr[:JOIN]
+      str += expr[:LEFT_JOIN].map{|from, cond| " LEFT JOIN #{from} ON #{cond}"}.join if expr[:LEFT_JOIN]
+      str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
+      str += ' GROUP BY ' + expr[:GROUP_BY].join(", ") if expr[:GROUP_BY]
+      str += ' HAVING ' + expr[:HAVING].map{|h| "(#{h})"}.join(" AND ") if expr[:HAVING]
+      str += ' ORDER BY ' + expr[:ORDER_BY].map{|col, order| col + ' ' + order}.join(", ") if expr[:ORDER_BY]
+      str += ' LIMIT ' + expr[:LIMIT] if expr[:LIMIT]
+      str += ' OFFSET ' + expr[:OFFSET] if expr[:OFFSET]
+      str = "(#{str}) AS #{expr[:AS]}" if expr[:AS]
+    elsif expr[:INSERT_INTO]
+      str =  "INSERT INTO #{expr[:INSERT_INTO]} (#{expr[:VALUES].first.join(", ")})"
+      str += " VALUES #{expr[:VALUES][1].map{|vals| "(#{vals.join(", ")})"}.join(" ")}"
+      str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
+    elsif expr[:DELETE_FROM]
+      str =  'DELETE FROM ' + expr[:DELETE_FROM]
+      str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
+      str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
+    elsif expr[:UPDATE]
+      str =  'UPDATE ' + expr[:UPDATE] 
+      str += ' SET ' + expr[:SET].map{|key, val| "#{key} = #{val}"}.join(", ")
+      str += ' FROM ' + expr[:FROM] if expr[:FROM]
+      str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
+      str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
+    end
+    return str
+  end
+
+  # options
+  #   verbose: print the query
+  #   csv: give data csv style with Arrays -- good for exports or for saving memory
+  def execute(options={})
+    expr = Pq.parse(@tree).to_s.encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: '')
+    puts expr if options[:verbose]
+    result = @@cx.exec(expr)
+    if options[:csv]
+      data = result.map{|h| h.values}
+      data.unshift((result.first || {}).keys)
+    else
+      data = result.map{|h| h}
+    end
+    result.clear
+    return data
+  end
+
+  # -- Top-level clauses
+
+  def self.select(*cols)
+    self.new(SELECT: cols.map{|c| Pq.quote_ident(c)})
+  end
+  def self.insert_into(table_name)
+    self.new(INSERT_INTO: Pq.quote_ident(table_name))
+  end
+  def self.delete_from(table_name)
+    self.new(DELETE_FROM: Pq.quote_ident(table_name))
+  end
+  def self.update(table_name)
+    self.new(UPDATE: Pq.quote_ident(table_name))
+  end
+
+  # -- Sub-clauses
+
+  # - SELECT sub-clauses
+
+  def from(expr)
+    @tree[:FROM] = Pq.quote_ident(expr)
+    self
+  end
+  def as(table_name)
+    @tree[:AS] = Pq.quote_ident(table_name)
+    self
+  end
+
+  def where(expr, data={})
+    @tree[:WHERE] = [Pq.interpolate_expr(expr, data)]
+    self
+  end
+  def andWhere(expr, data={})
+    @tree[:WHERE].push(Pq.interpolate_expr(expr, data))
+    self
+  end
+
+  def group_by(*cols)
+    @tree[:GROUP_BY] = cols.map{|c| Pq.quote_ident(c)}
+    self
+  end
+  def group_by(*cols)
+    @tree[:GROUP_BY] = cols.map{|c| Pq.quote_ident(c)}
+    self
+  end
+ 
+  def having(expr, data={})
+    @tree[:HAVING] = [Pq.interpolate_expr(data)]
+    self
+  end
+  def andHaving(expr, data={})
+    @tree[:HAVING].push(Pq.interpolate_expr(data))
+    self
+  end
+
+  def order_by(*cols)
+    orders = ['asc', 'desc']
+    # Sanitize out invalid order keywords
+    @tree[:ORDER_BY] = cols.map{|col, order| [Pq.quote_ident(col), orders.include?(order.to_s.downcase) ? order.to_s : '']}
+    self
+  end
+
+  def limit(n)
+    @tree[:LIMIT] = n.to_i.to_s
+    self
+  end
+
+  def offset(n)
+    @tree[:OFFSET] = n.to_i.to_s
+    self
+  end
+ 
+  def join(*joins)
+    @tree[:JOIN] ||= []
+    @tree[:JOIN].concat(joins.map{|table, cond, data| [Pq.quote_ident(table), Pq.interpolate_expr(cond, data)]})
+    self
+  end
+  def left_join(*joins)
+    @tree[:LEFT_JOIN] ||= []
+    @tree[:LEFT_JOIN].concat(joins.map{|table, cond, data| [Pq.quote_ident(table), Pq.interpolate_expr(cond, data)]})
+    self
+  end
+
+  # - INSERT INTO / UPDATE
+
+  # Allows three formats:
+  #   insert.values([col1, col2], [[val1, val2], [val3, val4]])
+  #   insert.values([{col1: val1, col2: val2}, {col1: val3, co2: val4}])
+  #   insert.values({col1: val1, col2: val2})  <- only for single inserts
+  def values(x, y=nil)
+    if x.is_a?(Array) && y.is_a?(Array)
+      cols = x
+      data = y
+    elsif x.is_a?(Array) && x.first.is_a?(Hash)
+      hashes = data.map{|h| h.sort.to_h}
+      cols = hashes.first.keys
+      data = hashes.map{|h| h.values}
+    elsif x.is_a?(Hash)
+      cols = x.keys
+      data = [x.values]
+    end
+    @tree[:VALUES] = [cols.map{|c| Pq.quote_ident(c)}, data.map{|vals| vals.map{|d| Pq.quote(d)}}]
+    self
+  end
+
+  def returning(*cols)
+    @tree[:RETURNING] = cols.map{|c| Pq.quote_ident(c)}
+    self
+  end
+
+  def set(hash)
+    @tree[:SET] = hash.map{|col, val| [Pq.quote_ident(col), Pq.quote(val)]}
+    self
+  end
+
+  # -- utils
+
+  def tree; @tree; end
+
+  # Safely interpolate some data into a SQL expression
+  def self.interpolate_expr(expr, data={})
+    expr.to_s.gsub(/\$\w+/) do |match|
+      val = data[match.gsub(/[ \$]*/, '').to_sym]
+      Array(val).map{|x| Pq.quote(x)}.join(", ")
+    end
+  end
+
+  # Quote a string for use in sql to prevent injection or weird errors
+  # Always use this for all values!
+  # Just uses double-dollar quoting universally. Should be generally safe and easy.
+  # Will return an unquoted value it it's a Fixnum
+  def self.quote(val)
+    if val.is_a?(Fixnum)
+      val.to_s
+    elsif val.is_a?(Time)
+      "'" + val.to_s + "'" # single-quoted times for a little better readability
+    elsif val == nil
+      "NULL"
+    elsif !!val == val # is a boolean
+      val ? "'t'" : "'f'"
+    else
+      return "$Q$" + val.to_s + "$Q$"
+    end
+  end
+  
+  # Double-quote sql identifiers (or parse Pq trees for subqueries)
+  def self.quote_ident(expr)
+    if expr.is_a?(Pq)
+      Pq.parse(expr.tree)
+    else
+      expr.to_s.split('.').map{|s| "\"#{s}\""}.join('.')
+    end
+  end
+
+end
+
