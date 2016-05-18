@@ -2,7 +2,7 @@ require 'pg'
 require 'uri'
 
 class Qx
-   
+
   # Initialize the database connection using a database url
   # Running this is required for #execute to work
   def self.config(h)
@@ -108,6 +108,7 @@ class Qx
     self
   end
   def andWhere(expr, data={})
+    @tree[:WHERE] ||= []
     @tree[:WHERE].push(Qx.interpolate_expr(expr, data))
     self
   end
@@ -190,6 +191,19 @@ class Qx
     self
   end
 
+  # -- Helpers!
+
+  def self.fetch(table_name, data, options={})
+    expr = Qx.select('*').from(table_name)
+    if data.is_a?(Hash)
+      expr = data.reduce(expr){|acc, pair| acc.andWhere("#{pair.first} IN ($vals)", vals: Array(pair.last))}
+    else
+      expr = expr.where("id IN ($ids)", ids: Array(data))
+    end
+    result = expr.execute(options)
+    return result.count <= 1 ? result.first : result
+  end
+
   # -- utils
 
   def tree; @tree; end
@@ -225,7 +239,7 @@ class Qx
     if expr.is_a?(Qx)
       Qx.parse(expr.tree)
     else
-      expr.to_s.split('.').map{|s| "\"#{s}\""}.join('.')
+      expr.to_s.split('.').map{|s| s == '*' ? s : "\"#{s}\""}.join('.')
     end
   end
 

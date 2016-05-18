@@ -114,10 +114,23 @@ expr = Qx.select('col1').from('table_name')
 
 # DELETE FROM
 
+## shortcut functions
+
+Some convenience functions are provided that compose some of the above SQL expressions
+
+```rb
+Qx.fetch(:table_name, [12, 34, 56])
+# SELECT * FROM table_name WHERE ids IN (12, 34, 56)
+
+donation = Qx.fetch(:donations, 23)
+donor = Qx.fetch(:donors, donation['supporter_id'])
+```
+
 # utils
 
 ## pretty-print
 
 ## .page_offset
 
+# 
 
