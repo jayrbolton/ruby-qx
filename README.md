@@ -1,18 +1,18 @@
 
 # ruby-qx
 
-Ruby Postgresql interface and query expression builder. This allows you to directly write Sql expressions in ruby without any obfuscation or obscuring of the SQL syntax and semantics. You can easily write complex joins, subqueries, etc without wrestling with an ORM.
+A simple SQL expression string constructor in ruby. Do you want to directly write efficient SQL expressions inside Ruby functions, safely using data from Ruby-land, without wrestling with a bloated ORM? Then this is the lib for you.
 
-For now this is tied to the `pg` gem, but this could be abstracted out in the future (open a PR!)
+This is implements a subset of the SQL language that I find most useful. Add new SQL clauses with a PR if you'd like to see more in here.
+
+Currently, it supports execution with postgresql using the `pg` gem. If you'd like to include MySql or another db for built-in execution, please make a PR. Or you can pass the generated SQL string into your engine with `MyDB.execute(qx_query.parse)`.
 
 # config
 
 ```rb
-
 require 'qx'
 
 Qx.config({ database_url: "postgres://username:password@domain/db_name" })
-
 ```
 
 # .execute
