@@ -41,7 +41,7 @@ class Qx
       str = "(#{str}) AS #{expr[:AS]}" if expr[:AS]
     elsif expr[:INSERT_INTO]
       str =  "INSERT INTO #{expr[:INSERT_INTO]} (#{expr[:VALUES].first.join(", ")})"
-      str += " VALUES #{expr[:VALUES][1].map{|vals| "(#{vals.join(", ")})"}.join(" ")}"
+      str += " VALUES #{expr[:VALUES][1].map{|vals| "(#{vals.join(", ")})"}.join(", ")}"
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     elsif expr[:DELETE_FROM]
       str =  'DELETE FROM ' + expr[:DELETE_FROM]
@@ -54,18 +54,30 @@ class Qx
       str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     end
-    return str
+    return str + ';'
   end
   def parse; Qx.parse(@tree); end
 
-  # options
-  #   verbose: print the query
-  #   csv: give data csv style with Arrays -- good for exports or for saving memory
+  # Qx.select("id").from("supporters").execute
   def execute(options={})
     expr = Qx.parse(@tree).to_s.encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: '')
+    return Qx.execute_raw(expr, options)
+  end
+
+  # Can pass in an expression string or another Qx object
+  # Qx.execute("SELECT id FROM table_name", {format: 'csv'})
+  # Qx.execute(Qx.select("id").from("table_name"))
+  def self.execute(expr, options={})
+    return expr.is_a?(String) ? self.execute_raw(expr, options) : expr.execute(options)
+  end
+
+  # options
+  #   verbose: print the query
+  #   format: 'csv' | 'hash'    give data csv style with Arrays -- good for exports or for saving memory
+  def self.execute_raw(expr, options={})
     puts expr if options[:verbose]
     result = @@cx.exec(expr)
-    if options[:csv]
+    if options[:format] == 'csv'
       data = result.map{|h| h.values}
       data.unshift((result.first || {}).keys)
     else
@@ -170,7 +182,7 @@ class Qx
       cols = x
       data = y
     elsif x.is_a?(Array) && x.first.is_a?(Hash)
-      hashes = data.map{|h| h.sort.to_h}
+      hashes = x.map{|h| h.sort.to_h}
       cols = hashes.first.keys
       data = hashes.map{|h| h.values}
     elsif x.is_a?(Hash)
