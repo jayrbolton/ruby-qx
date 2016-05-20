@@ -23,9 +23,9 @@ class Qx
   # Parse a Qx expression tree into a single query string that can be executed
   # http://www.postgresql.org/docs/9.0/static/sql-commands.html
   def self.parse(expr)
-    if expr.is_a?(String) 
+    if expr.is_a?(String)
       return expr # already parsed
-    elsif expr.is_a?(Array) 
+    elsif expr.is_a?(Array)
       return expr.join(",")
     elsif expr[:SELECT]
       str =  'SELECT '  + expr[:SELECT].join(", ")
@@ -35,7 +35,7 @@ class Qx
       str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
       str += ' GROUP BY ' + expr[:GROUP_BY].join(", ") if expr[:GROUP_BY]
       str += ' HAVING ' + expr[:HAVING].map{|h| "(#{h})"}.join(" AND ") if expr[:HAVING]
-      str += ' ORDER BY ' + expr[:ORDER_BY].map{|col, order| col + ' ' + order}.join(", ") if expr[:ORDER_BY]
+      str += ' ORDER BY ' + expr[:ORDER_BY].map{|col, order| col + (order ? ' ' + order : '')}.join(", ") if expr[:ORDER_BY]
       str += ' LIMIT ' + expr[:LIMIT] if expr[:LIMIT]
       str += ' OFFSET ' + expr[:OFFSET] if expr[:OFFSET]
       str = "(#{str}) AS #{expr[:AS]}" if expr[:AS]
@@ -48,13 +48,13 @@ class Qx
       str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     elsif expr[:UPDATE]
-      str =  'UPDATE ' + expr[:UPDATE] 
+      str =  'UPDATE ' + expr[:UPDATE]
       str += ' SET ' + expr[:SET].map{|key, val| "#{key} = #{val}"}.join(", ")
       str += ' FROM ' + expr[:FROM] if expr[:FROM]
       str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     end
-    return str + ';'
+    return str
   end
   def parse; Qx.parse(@tree); end
 
@@ -119,7 +119,7 @@ class Qx
     @tree[:WHERE] = [Qx.interpolate_expr(expr, data)]
     self
   end
-  def andWhere(expr, data={})
+  def and_where(expr, data={})
     @tree[:WHERE] ||= []
     @tree[:WHERE].push(Qx.interpolate_expr(expr, data))
     self
@@ -129,24 +129,20 @@ class Qx
     @tree[:GROUP_BY] = cols.map{|c| Qx.quote_ident(c)}
     self
   end
-  def group_by(*cols)
-    @tree[:GROUP_BY] = cols.map{|c| Qx.quote_ident(c)}
-    self
-  end
- 
-  def having(expr, data={})
-    @tree[:HAVING] = [Qx.interpolate_expr(data)]
-    self
-  end
-  def andHaving(expr, data={})
-    @tree[:HAVING].push(Qx.interpolate_expr(data))
-    self
-  end
 
   def order_by(*cols)
     orders = ['asc', 'desc']
     # Sanitize out invalid order keywords
-    @tree[:ORDER_BY] = cols.map{|col, order| [Qx.quote_ident(col), orders.include?(order.to_s.downcase) ? order.to_s : '']}
+    @tree[:ORDER_BY] = cols.map{|col, order| [Qx.quote_ident(col), orders.include?(order.to_s.downcase) ? order.to_s : nil]}
+    self
+  end
+
+  def having(expr, data={})
+    @tree[:HAVING] = [Qx.interpolate_expr(expr, data)]
+    self
+  end
+  def and_having(expr, data={})
+    @tree[:HAVING].push(Qx.interpolate_expr(expr, data))
     self
   end
 
@@ -159,7 +155,7 @@ class Qx
     @tree[:OFFSET] = n.to_i.to_s
     self
   end
- 
+
   def join(*joins)
     @tree[:JOIN] ||= []
     @tree[:JOIN].concat(joins.map{|table, cond, data| [Qx.quote_ident(table), Qx.interpolate_expr(cond, data)]})
@@ -233,7 +229,9 @@ class Qx
   # Just uses double-dollar quoting universally. Should be generally safe and easy.
   # Will return an unquoted value it it's a Fixnum
   def self.quote(val)
-    if val.is_a?(Fixnum)
+    if val.is_a?(Qx)
+      val.parse
+    elsif val.is_a?(Fixnum)
       val.to_s
     elsif val.is_a?(Time)
       "'" + val.to_s + "'" # single-quoted times for a little better readability
@@ -245,7 +243,7 @@ class Qx
       return "$Q$" + val.to_s + "$Q$"
     end
   end
-  
+
   # Double-quote sql identifiers (or parse Qx trees for subqueries)
   def self.quote_ident(expr)
     if expr.is_a?(Qx)
