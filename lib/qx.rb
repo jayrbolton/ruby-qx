@@ -211,7 +211,7 @@ class Qx
   def self.fetch(table_name, data, options={})
     expr = Qx.select('*').from(table_name)
     if data.is_a?(Hash)
-      expr = data.reduce(expr){|acc, pair| acc.andWhere("#{pair.first} IN ($vals)", vals: Array(pair.last))}
+      expr = data.reduce(expr){|acc, pair| acc.and_where("#{pair.first} IN ($vals)", vals: Array(pair.last))}
     else
       expr = expr.where("id IN ($ids)", ids: Array(data))
     end
