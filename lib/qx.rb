@@ -3,8 +3,13 @@ require 'uri'
 
 class Qx
 
+  ## 
   # Initialize the database connection using a database url
   # Running this is required for #execute to work
+  # Pass in a hash. For now, it only takes on key called :database_url
+  # Include the full url including userpass and database name
+  # For example:
+  # Qx.config(database_url: 'postgres://admin:password@localhost/database_name')
   def self.config(h)
     db = URI.parse(h[:database_url])
     @@cx = PG::Connection.open({host: db.host, port: db.port, user: db.user, password: db.password, dbname: db.path[1..-1]})
@@ -15,6 +20,7 @@ class Qx
     return @@cx
   end
 
+  # Qx.new, only used internally
   def initialize(tree)
     @tree = tree
     return self
@@ -56,6 +62,7 @@ class Qx
     end
     return str
   end
+  # An instance method version of the above
   def parse; Qx.parse(@tree); end
 
   # Qx.select("id").from("supporters").execute
