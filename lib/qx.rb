@@ -26,6 +26,12 @@ class Qx
     return self
   end
 
+  def self.transaction(&block)
+    @@cx.transaction do
+      yield block
+    end
+  end
+
   # Parse a Qx expression tree into a single query string that can be executed
   # http://www.postgresql.org/docs/9.0/static/sql-commands.html
   def self.parse(expr)
