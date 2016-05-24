@@ -1,5 +1,5 @@
-require 'pg'
 require 'uri'
+require 'active_record'
 
 class Qx
 
@@ -11,13 +11,7 @@ class Qx
   # For example:
   # Qx.config(database_url: 'postgres://admin:password@localhost/database_name')
   def self.config(h)
-    db = URI.parse(h[:database_url])
-    @@cx = PG::Connection.open({host: db.host, port: db.port, user: db.user, password: db.password, dbname: db.path[1..-1]})
-    @@cx.type_map_for_results = PG::BasicTypeMapForResults.new @@cx
-    # Make certain we are using UTC
-    ENV['TZ'] = 'UTC'
-    @@cx.exec("set timezone='UTC';")
-    return @@cx
+    ActiveRecord::Base.establish_connection(h[:database_url])
   end
 
   # Qx.new, only used internally
@@ -89,7 +83,7 @@ class Qx
   #   format: 'csv' | 'hash'    give data csv style with Arrays -- good for exports or for saving memory
   def self.execute_raw(expr, options={})
     puts expr if options[:verbose]
-    result = @@cx.exec(expr)
+    result = ActiveRecord::Base.connection.execute(expr)
     if options[:format] == 'csv'
       data = result.map{|h| h.values}
       data.unshift((result.first || {}).keys)

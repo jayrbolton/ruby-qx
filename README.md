@@ -5,7 +5,7 @@ A simple SQL expression string constructor in ruby. Do you want to directly writ
 
 This is implements a subset of the SQL language that I find most useful. Add new SQL clauses with a PR if you'd like to see more in here.
 
-Currently, it supports execution with postgresql using the `pg` gem. If you'd like to include MySql or another db for built-in execution, please make a PR. Or you can pass the generated SQL string into your engine with `MyDB.execute(qx_query.parse)`.
+This library uses ActiveRecord for executing SQL, taking advantage of its connection pooling features.
 
 # Qx.config(options)
 
@@ -24,10 +24,11 @@ Qx.config(database_url: "postgres://username:password@domain/db_name")
 You can execute any SQL string or object using `.execute` or `#execute`.
 
 ```rb
-Qx.execute("SELECT x FROM y WHERE x = $n", n: 1)
 expr = Qx.select(:x).from(:y).where("x = $n", n: 1)
 expr.execute(verbose: true)
 Qx.execute(expr, format: 'csv')
+# Or raw:
+Qx.execute("SELECT x FROM y WHERE x = $n", n: 1)
 ```
 
 `.execute` takes an optional options hash as its second argument, which can have:
