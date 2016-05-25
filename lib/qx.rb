@@ -91,7 +91,7 @@ class Qx
       data = result.map{|h| h}
     end
     result.clear
-    return data.count <= 1 ? data.first : data
+    return data
   end
 
   # -- Top-level clauses
@@ -177,9 +177,9 @@ class Qx
   # - INSERT INTO / UPDATE
 
   # Allows three formats:
-  #   insert.values([col1, col2], [[val1, val2], [val3, val4]])
-  #   insert.values([{col1: val1, col2: val2}, {col1: val3, co2: val4}])
-  #   insert.values({col1: val1, col2: val2})  <- only for single inserts
+  #   insert.values([[col1, col2], [val1, val2], [val3, val3]], options)
+  #   insert.values([{col1: val1, col2: val2}, {col1: val3, co2: val4}], options)
+  #   insert.values({col1: val1, col2: val2}, options)  <- only for single inserts
   def values(x, y=nil)
     if x.is_a?(Array) && y.is_a?(Array)
       cols = x
