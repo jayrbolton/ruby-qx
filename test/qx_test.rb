@@ -1,5 +1,6 @@
 require './lib/qx.rb'
 require 'minitest/autorun'
+require 'pry'
 
 class QxTest < Minitest::Test
 
@@ -94,5 +95,14 @@ class QxTest < Minitest::Test
       .offset(10)
       .parse
     assert_equal parsed, %Q(SELECT "id" FROM "table" JOIN (SELECT "id" FROM "assoc") AS "assoc" ON assoc.table_id=table.id LEFT JOIN "lefty" ON lefty.table_id=table.id WHERE (x = 1) AND (y = 1) GROUP BY "x" HAVING (COUNT(x) > 1) AND (COUNT(y) > 1) ORDER BY "y" LIMIT 10 OFFSET 10)
+  end
+
+  def test_insert_timestamps
+    now = Time.now.utc
+    parsed = Qx.insert_into(:table_name).values({x: 1}).ts.parse
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("x", created_at, updated_at) VALUES (1, #{now}, #{now}))
+  end
+
+  def test_update_timestamps
   end
 end

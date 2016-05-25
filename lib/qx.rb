@@ -196,6 +196,18 @@ class Qx
     self
   end
 
+  # add timestamps to an insert or update
+  def ts
+    now = Time.now.utc
+    if @tree[:VALUES]
+      @tree[:VALUES].first.concat ['created_at', 'updated_at']
+      @tree[:VALUES][1] = @tree[:VALUES][1].map{|arr| arr.concat [now, now]}
+    elsif @tree[:SET]
+      @tree[:SET].concat ['updated_at', now]
+    end
+    self
+  end
+
   def returning(*cols)
     @tree[:RETURNING] = cols.map{|c| Qx.quote_ident(c)}
     self
