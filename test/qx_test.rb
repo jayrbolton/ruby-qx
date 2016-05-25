@@ -100,7 +100,7 @@ class QxTest < Minitest::Test
   def test_insert_timestamps
     now = Time.now.utc
     parsed = Qx.insert_into(:table_name).values({x: 1}).ts.parse
-    assert_equal parsed, %Q(INSERT INTO "table_name" ("x", created_at, updated_at) VALUES (1, #{now}, #{now}))
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("x", created_at, updated_at) VALUES (1, '#{now}', '#{now}'))
   end
 
   def test_update_timestamps

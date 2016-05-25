@@ -198,7 +198,7 @@ class Qx
 
   # add timestamps to an insert or update
   def ts
-    now = Time.now.utc
+    now = "'#{Time.now.utc}'"
     if @tree[:VALUES]
       @tree[:VALUES].first.concat ['created_at', 'updated_at']
       @tree[:VALUES][1] = @tree[:VALUES][1].map{|arr| arr.concat [now, now]}
