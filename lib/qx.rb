@@ -97,7 +97,7 @@ class Qx
   # -- Top-level clauses
 
   def self.select(*cols)
-    self.new(SELECT: cols.map{|c| Qx.quote_ident(c)})
+    self.new(SELECT: cols)
   end
   def self.insert_into(table_name)
     self.new(INSERT_INTO: Qx.quote_ident(table_name))
@@ -203,7 +203,7 @@ class Qx
       @tree[:VALUES].first.concat ['created_at', 'updated_at']
       @tree[:VALUES][1] = @tree[:VALUES][1].map{|arr| arr.concat [now, now]}
     elsif @tree[:SET]
-      @tree[:SET].concat ['updated_at', now]
+      @tree[:SET].push ['updated_at', now]
     end
     self
   end
