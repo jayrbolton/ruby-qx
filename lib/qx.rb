@@ -21,7 +21,7 @@ class Qx
   end
 
   def self.transaction(&block)
-    @@cx.transaction do
+    ActiveRecord::Base.transaction do
       yield block
     end
   end
