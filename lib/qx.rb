@@ -12,7 +12,7 @@ class Qx
   # For example:
   # Qx.config(database_url: 'postgres://admin:password@localhost/database_name')
   def self.config(h)
-    ActiveRecord::Base.establish_connection(h[:database_url])
+    ActiveRecord::Base.establish_connection(h[:database_url]) if h[:database_url]
     @@type_map = h[:type_map]
   end
 
@@ -86,7 +86,7 @@ class Qx
   def self.execute_raw(expr, options={})
     puts expr if options[:verbose]
     result = ActiveRecord::Base.connection.execute(expr)
-    result.map_types!(@@type_map)
+    result.map_types!(@@type_map) if @@type_map
     if options[:format] == 'csv'
       data = result.map{|h| h.values}
       data.unshift((result.first || {}).keys)
