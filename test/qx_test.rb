@@ -22,9 +22,17 @@ class QxTest < Minitest::Test
     parsed = Qx.select(:id, "name").from(:table_name).where("x = $y OR a = $b", y: 1, b: 2).parse
     assert_equal parsed, %Q(SELECT id, name FROM "table_name" WHERE (x = 1 OR a = 2))
   end
+  def test_select_where_hash
+    parsed = Qx.select(:id, "name").from(:table_name).where(x: 1, y: 2).parse
+    assert_equal parsed, %Q(SELECT id, name FROM "table_name" WHERE ("x" IN (1) AND "y" IN (2)))
+  end
   def test_select_and_where
     parsed = Qx.select(:id, "name").from(:table_name).where("x = $y", y: 1).and_where("a = $b", b: 2).parse
     assert_equal parsed, %Q(SELECT id, name FROM "table_name" WHERE (x = 1) AND (a = 2))
+  end
+  def test_select_and_where_hash
+    parsed = Qx.select(:id, "name").from(:table_name).where("x = $y", y: 1).and_where(a: 2).parse
+    assert_equal parsed, %Q(SELECT id, name FROM "table_name" WHERE (x = 1) AND ("a" IN (2)))
   end
   
   def test_select_and_group_by
@@ -57,12 +65,12 @@ class QxTest < Minitest::Test
 
   def test_select_join
     parsed = Qx.select(:id, "name").from(:table_name).join(['assoc1', 'assoc1.table_name_id=table_name.id']).parse
-    assert_equal parsed, %Q(SELECT id, name FROM "table_name" JOIN "assoc1" ON assoc1.table_name_id=table_name.id)
+    assert_equal parsed, %Q(SELECT id, name FROM "table_name" JOIN assoc1 ON assoc1.table_name_id=table_name.id)
   end
 
   def test_select_left_join
     parsed = Qx.select(:id, "name").from(:table_name).left_join(['assoc1', 'assoc1.table_name_id=table_name.id']).parse
-    assert_equal parsed, %Q(SELECT id, name FROM "table_name" LEFT JOIN "assoc1" ON assoc1.table_name_id=table_name.id)
+    assert_equal parsed, %Q(SELECT id, name FROM "table_name" LEFT JOIN assoc1 ON assoc1.table_name_id=table_name.id)
   end
 
   def test_select_where_subquery
@@ -94,7 +102,7 @@ class QxTest < Minitest::Test
       .limit(10)
       .offset(10)
       .parse
-    assert_equal parsed, %Q(SELECT id FROM "table" JOIN (SELECT id FROM "assoc") AS "assoc" ON assoc.table_id=table.id LEFT JOIN "lefty" ON lefty.table_id=table.id WHERE (x = 1) AND (y = 1) GROUP BY "x" HAVING (COUNT(x) > 1) AND (COUNT(y) > 1) ORDER BY "y" LIMIT 10 OFFSET 10)
+    assert_equal parsed, %Q(SELECT id FROM "table" JOIN (SELECT id FROM "assoc") AS "assoc" ON assoc.table_id=table.id LEFT JOIN lefty ON lefty.table_id=table.id WHERE (x = 1) AND (y = 1) GROUP BY "x" HAVING (COUNT(x) > 1) AND (COUNT(y) > 1) ORDER BY "y" LIMIT 10 OFFSET 10)
   end
 
   def test_insert_timestamps

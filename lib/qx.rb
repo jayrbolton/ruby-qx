@@ -123,13 +123,22 @@ class Qx
   end
 
   def where(expr, data={})
-    @tree[:WHERE] = [Qx.interpolate_expr(expr, data)]
+    str = Qx.parse_where_param(expr, data)
+    @tree[:WHERE] = [str]
     self
   end
   def and_where(expr, data={})
     @tree[:WHERE] ||= []
-    @tree[:WHERE].push(Qx.interpolate_expr(expr, data))
+    str = Qx.parse_where_param(expr, data)
+    @tree[:WHERE].push(str)
     self
+  end
+  def self.parse_where_param(expr,data)
+    if expr.is_a?(Hash)
+      parsed = expr.map{|key, val| "#{Qx.quote_ident(key)} IN (#{Qx.quote(val)})"}.join(" AND ")
+    else
+      parsed = Qx.interpolate_expr(expr, data)
+    end
   end
 
   def group_by(*cols)
@@ -165,12 +174,12 @@ class Qx
 
   def join(*joins)
     @tree[:JOIN] ||= []
-    @tree[:JOIN].concat(joins.map{|table, cond, data| [Qx.quote_ident(table), Qx.interpolate_expr(cond, data)]})
+    @tree[:JOIN].concat(joins.map{|table, cond, data| [table.is_a?(Qx) ? table.parse : table, Qx.interpolate_expr(cond, data)]})
     self
   end
   def left_join(*joins)
     @tree[:LEFT_JOIN] ||= []
-    @tree[:LEFT_JOIN].concat(joins.map{|table, cond, data| [Qx.quote_ident(table), Qx.interpolate_expr(cond, data)]})
+    @tree[:LEFT_JOIN].concat(joins.map{|table, cond, data| [table.is_a?(Qx) ? table.parse : table, Qx.interpolate_expr(cond, data)]})
     self
   end
 
@@ -180,20 +189,46 @@ class Qx
   #   insert.values([[col1, col2], [val1, val2], [val3, val3]], options)
   #   insert.values([{col1: val1, col2: val2}, {col1: val3, co2: val4}], options)
   #   insert.values({col1: val1, col2: val2}, options)  <- only for single inserts
-  def values(x, y=nil)
-    if x.is_a?(Array) && y.is_a?(Array)
-      cols = x
-      data = y
-    elsif x.is_a?(Array) && x.first.is_a?(Hash)
-      hashes = x.map{|h| h.sort.to_h}
+  def values(vals)
+    if vals.is_a?(Array) && vals.first.is_a?(Array)
+      cols = vals.first
+      data = vals[1..-1]
+    elsif vals.is_a?(Array) && vals.first.is_a?(Hash)
+      hashes = vals.map{|h| h.sort.to_h} # Make sure hash keys line up with all row data
       cols = hashes.first.keys
       data = hashes.map{|h| h.values}
-    elsif x.is_a?(Hash)
-      cols = x.keys
-      data = [x.values]
+    elsif vals.is_a?(Hash)
+      cols = vals.keys
+      data = [vals.values]
     end
     @tree[:VALUES] = [cols.map{|c| Qx.quote_ident(c)}, data.map{|vals| vals.map{|d| Qx.quote(d)}}]
     self
+  end
+
+  # A convenience function for setting the same values across all inserted rows
+  def common_values(h)
+    cols = h.keys.map{|col| Qx.quote_ident(col)}
+    data = h.values.map{|val| Qx.quote(val)}
+    @tree[:VALUES] = [
+      @tree[:VALUES].first.concat(cols),
+      @tree[:VALUES].last.map{|row| row.concat(data)}
+    ]
+    self
+  end
+
+  def self.parse_val_params(vals)
+    if vals.is_a?(Array) && vals.first.is_a?(Array)
+      cols = vals.first
+      data = vals[1..-1]
+    elsif vals.is_a?(Array) && vals.first.is_a?(Hash)
+      hashes = vals.map{|h| h.sort.to_h}
+      cols = hashes.first.keys
+      data = hashes.map{|h| h.values}
+    elsif vals.is_a?(Hash)
+      cols = vals.keys
+      data = [vals.values]
+    end
+    return [cols, data]
   end
 
   # add timestamps to an insert or update

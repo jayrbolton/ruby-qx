@@ -182,7 +182,7 @@ You can similarly embed subqueries in a WHERE or a FROM.
 
 Some convenience functions are provided that compose some of SQL expressions.
 
-#### Qx.fetch(table_name, ids_or_data)
+### Qx.fetch(table_name, ids_or_data)
 
 This is a quick way to fetch some full rows of data by id or another column.
 
@@ -199,6 +199,18 @@ donor = Qx.fetch(:donors, donation['supporter_id'])
 
 donation = Qx.fetch(:donations, {status: 'active'})
 # SELECT * FROM donations WHERE status IN ('active')
+```
+
+### expr.common_values(hash)
+
+If you're bulk inserting but want some common values in all your rows, you can do a single call to .common_values
+
+```rb
+expr = Qx.insert_into(:table_name)
+  .values([{x: 1}, {x: 2}])
+  .common_values({y: 'common'})
+# INSERT INTO "table_name" ("x", "y")
+# VALUES (1, 'common'), (2, 'common')
 ```
 
 # utils
