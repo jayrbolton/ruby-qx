@@ -1,6 +1,5 @@
 require 'uri'
 require 'active_record'
-require 'pg'
     
 
 class Qx
@@ -85,8 +84,6 @@ class Qx
   #   format: 'csv' | 'hash'    give data csv style with Arrays -- good for exports or for saving memory
   def self.execute_raw(expr, options={})
     puts expr if options[:verbose]
-    cnn = ActiveRecord::Base.connection.raw_connection
-    cnn.type_map_for_results = PG::BasicTypeMapForResults.new cnn
     result = ActiveRecord::Base.connection.execute(expr)
     if options[:format] == 'csv'
       data = result.map{|h| h.values}
