@@ -145,14 +145,14 @@ class Qx
   end
 
   def group_by(*cols)
-    @tree[:GROUP_BY] = cols.map{|c| Qx.quote_ident(c)}
+    @tree[:GROUP_BY] = cols.map{|c| c.to_s}
     self
   end
 
   def order_by(*cols)
     orders = ['asc', 'desc']
     # Sanitize out invalid order keywords
-    @tree[:ORDER_BY] = cols.map{|col, order| [Qx.quote_ident(col), orders.include?(order.to_s.downcase) ? order.to_s : nil]}
+    @tree[:ORDER_BY] = cols.map{|col, order| [col.to_s, orders.include?(order.to_s.downcase) ? order.to_s : nil]}
     self
   end
 
