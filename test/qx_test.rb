@@ -1,11 +1,14 @@
 require './lib/qx.rb'
+require 'pg'
 require 'minitest/autorun'
 require 'pry'
 
 class QxTest < Minitest::Test
 
   def setup
-    Qx.config(database_url: 'postgres://admin:password@localhost/qx_test')
+    ActiveRecord::Base.establish_connection('postgres://admin:password@localhost/qx_test')
+    tm = PG::BasicTypeMapForResults.new(ActiveRecord::Base.connection.raw_connection)
+    Qx.config(type_map: tm)
   end
 
   def test_select_from
@@ -22,9 +25,9 @@ class QxTest < Minitest::Test
     parsed = Qx.select(:id, "name").from(:table_name).where("x = $y OR a = $b", y: 1, b: 2).parse
     assert_equal parsed, %Q(SELECT id, name FROM "table_name" WHERE (x = 1 OR a = 2))
   end
-  def test_select_where_hash
-    parsed = Qx.select(:id, "name").from(:table_name).where(x: 1, y: 2).parse
-    assert_equal parsed, %Q(SELECT id, name FROM "table_name" WHERE ("x" IN (1) AND "y" IN (2)))
+  def test_select_where_hash_array
+    parsed = Qx.select(:id, "name").from(:table_name).where([x: 1], ["y = $n", {n: 2}]).parse
+    assert_equal parsed, %Q(SELECT id, name FROM "table_name" WHERE ("x" IN (1)) AND (y = 2))
   end
   def test_select_and_where
     parsed = Qx.select(:id, "name").from(:table_name).where("x = $y", y: 1).and_where("a = $b", b: 2).parse
@@ -67,10 +70,19 @@ class QxTest < Minitest::Test
     parsed = Qx.select(:id, "name").from(:table_name).join(['assoc1', 'assoc1.table_name_id=table_name.id']).parse
     assert_equal parsed, %Q(SELECT id, name FROM "table_name" JOIN assoc1 ON assoc1.table_name_id=table_name.id)
   end
-
+  def test_select_add_join
+    parsed = Qx.select(:id, "name").from(:table_name).join('assoc1', 'assoc1.table_name_id=table_name.id')
+      .add_join(['assoc2', 'assoc2.table_name_id=table_name.id']).parse
+    assert_equal parsed, %Q(SELECT id, name FROM "table_name" JOIN assoc1 ON assoc1.table_name_id=table_name.id JOIN assoc2 ON assoc2.table_name_id=table_name.id)
+  end
   def test_select_left_join
     parsed = Qx.select(:id, "name").from(:table_name).left_join(['assoc1', 'assoc1.table_name_id=table_name.id']).parse
     assert_equal parsed, %Q(SELECT id, name FROM "table_name" LEFT JOIN assoc1 ON assoc1.table_name_id=table_name.id)
+  end
+  def test_select_add_left_join
+    parsed = Qx.select(:id, "name").from(:table_name).left_join('assoc1', 'assoc1.table_name_id=table_name.id')
+      .add_left_join(['assoc2', 'assoc2.table_name_id=table_name.id']).parse
+    assert_equal parsed, %Q(SELECT id, name FROM "table_name" LEFT JOIN assoc1 ON assoc1.table_name_id=table_name.id LEFT JOIN assoc2 ON assoc2.table_name_id=table_name.id)
   end
 
   def test_select_where_subquery
@@ -105,15 +117,74 @@ class QxTest < Minitest::Test
     assert_equal parsed, %Q(SELECT id FROM "table" JOIN (SELECT id FROM "assoc") AS "assoc" ON assoc.table_id=table.id LEFT JOIN lefty ON lefty.table_id=table.id WHERE (x = 1) AND (y = 1) GROUP BY x HAVING (COUNT(x) > 1) AND (COUNT(y) > 1) ORDER BY y LIMIT 10 OFFSET 10)
   end
 
+  def test_insert_into_values_hash
+    parsed = Qx.insert_into(:table_name).values(x: 1).parse
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("x") VALUES (1))
+  end
+  def test_insert_into_values_hash_array
+    parsed = Qx.insert_into(:table_name).values([{x: 1}, {x: 2}]).parse
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("x") VALUES (1), (2))
+  end
+  def test_insert_into_values_csv_style
+    parsed = Qx.insert_into(:table_name).values([['x'], [1], [2]]).parse
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("x") VALUES (1), (2))
+  end
+  def test_insert_into_values_common_values
+    parsed = Qx.insert_into(:table_name).values([{x: 'bye'}, {x: 'hi'}]).common_values(z: 1).parse
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("x", "z") VALUES ($Q$bye$Q$, 1), ($Q$hi$Q$, 1))
+  end
+  def test_insert_into_values_timestamps
+    parsed = Qx.insert_into(:table_name).values(x: 1).ts.parse
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("x", created_at, updated_at) VALUES (1, '#{Time.now.utc}', '#{Time.now.utc}'))
+  end
+  def test_insert_into_values_returning
+    parsed = Qx.insert_into(:table_name).values(x: 1).returning('*').parse
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("x") VALUES (1) RETURNING *)
+  end
+
+  def test_update_set
+    parsed = Qx.update(:table_name).set(x: 1).parse
+    assert_equal parsed, %Q(UPDATE "table_name" SET "x" = 1)
+  end
+  def test_update_timestamps
+    now = Time.now.utc
+    parsed = Qx.update(:table_name).set(x: 1).ts.parse
+    assert_equal parsed, %Q(UPDATE "table_name" SET "x" = 1, updated_at = '#{now}')
+  end
+
   def test_insert_timestamps
     now = Time.now.utc
     parsed = Qx.insert_into(:table_name).values({x: 1}).ts.parse
     assert_equal parsed, %Q(INSERT INTO "table_name" ("x", created_at, updated_at) VALUES (1, '#{now}', '#{now}'))
   end
 
-  def test_update_timestamps
-    now = Time.now.utc
-    parsed = Qx.update(:table_name).set(x: 1).ts.parse
-    assert_equal parsed, %Q(UPDATE "table_name" SET "x" = 1, updated_at = '#{now}')
+  def test_delete_from
+    parsed = Qx.delete_from(:table_name).where(x: 1).parse
+    assert_equal parsed, %Q(DELETE FROM "table_name" WHERE ("x" IN (1)))
+  end
+
+  def test_pagination
+    parsed = Qx.select(:x).from(:y).paginate(4, 30).parse
+    assert_equal parsed, %Q(SELECT x FROM "y" LIMIT 30 OFFSET 90)
+  end
+
+  def test_execute_string
+    result = Qx.execute("SELECT * FROM (VALUES ($x)) AS t", x: 'x')
+    assert_equal result, [{'column1' => 'x'}]
+  end
+  def test_execute_format_csv
+    result = Qx.execute("SELECT * FROM (VALUES ($x)) AS t", {x: 'x'}, {format: 'csv'})
+    assert_equal result, [['column1'], ['x']]
+  end
+  def test_execute_on_instances
+    result = Qx.insert_into(:examples).values(x: 1).execute
+    result = Qx.execute(Qx.select("*").from(:examples).limit(1))
+    assert_equal result, [{'x' => 1, 'y' => nil}]
+    Qx.delete_from(:examples).where(x: 1).execute
+  end
+
+  def test_explain
+    parsed = Qx.select("*").from("table_name").explain.parse
+    assert_equal parsed, %Q(EXPLAIN SELECT * FROM "table_name")
   end
 end

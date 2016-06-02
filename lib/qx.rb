@@ -12,8 +12,8 @@ class Qx
   # For example:
   # Qx.config(database_url: 'postgres://admin:password@localhost/database_name')
   def self.config(h)
-    ActiveRecord::Base.establish_connection(h[:database_url]) if h[:database_url]
     @@type_map = h[:type_map]
+    ActiveRecord::Base.establish_connection(h[:database_url]) if h[:database_url]
   end
 
   # Qx.new, only used internally
@@ -47,6 +47,7 @@ class Qx
       str += ' LIMIT ' + expr[:LIMIT] if expr[:LIMIT]
       str += ' OFFSET ' + expr[:OFFSET] if expr[:OFFSET]
       str = "(#{str}) AS #{expr[:AS]}" if expr[:AS]
+      str = "EXPLAIN #{str}" if expr[:EXPLAIN]
     elsif expr[:INSERT_INTO]
       str =  "INSERT INTO #{expr[:INSERT_INTO]} (#{expr[:VALUES].first.join(", ")})"
       str += " VALUES #{expr[:VALUES][1].map{|vals| "(#{vals.join(", ")})"}.join(", ")}"
@@ -76,8 +77,10 @@ class Qx
   # Can pass in an expression string or another Qx object
   # Qx.execute("SELECT id FROM table_name", {format: 'csv'})
   # Qx.execute(Qx.select("id").from("table_name"))
-  def self.execute(expr, options={})
-    return expr.is_a?(String) ? self.execute_raw(expr, options) : expr.execute(options)
+  def self.execute(expr, data={}, options={})
+    return expr.execute(data) if expr.is_a?(Qx)
+    interpolated = Qx.interpolate_expr(expr, data)
+    return self.execute_raw(interpolated, options)
   end
 
   # options
@@ -125,23 +128,17 @@ class Qx
     self
   end
 
-  def where(expr, data={})
-    str = Qx.parse_where_param(expr, data)
-    @tree[:WHERE] = [str]
+  # Clauses are pairs of expression and data
+  def where(*clauses)
+    ws = Qx.get_where_params(clauses)
+    @tree[:WHERE] = Qx.parse_wheres(ws)
     self
   end
-  def and_where(expr, data={})
+  def and_where(*clauses)
+    ws = Qx.get_where_params(clauses)
     @tree[:WHERE] ||= []
-    str = Qx.parse_where_param(expr, data)
-    @tree[:WHERE].push(str)
+    @tree[:WHERE].concat(Qx.parse_wheres(ws))
     self
-  end
-  def self.parse_where_param(expr,data)
-    if expr.is_a?(Hash)
-      parsed = expr.map{|key, val| "#{Qx.quote_ident(key)} IN (#{Qx.quote(val)})"}.join(" AND ")
-    else
-      parsed = Qx.interpolate_expr(expr, data)
-    end
   end
 
   def group_by(*cols)
@@ -176,13 +173,25 @@ class Qx
   end
 
   def join(*joins)
+    js = Qx.get_join_param(joins)
+    @tree[:JOIN] = Qx.parse_joins(js)
+    self
+  end
+  def add_join(*joins)
+    js = Qx.get_join_param(joins)
     @tree[:JOIN] ||= []
-    @tree[:JOIN].concat(joins.map{|table, cond, data| [table.is_a?(Qx) ? table.parse : table, Qx.interpolate_expr(cond, data)]})
+    @tree[:JOIN].concat(Qx.parse_joins(js))
     self
   end
   def left_join(*joins)
+    js = Qx.get_join_param(joins)
+    @tree[:LEFT_JOIN] = Qx.parse_joins(js)
+    self
+  end
+  def add_left_join(*joins)
+    js = Qx.get_join_param(joins)
     @tree[:LEFT_JOIN] ||= []
-    @tree[:LEFT_JOIN].concat(joins.map{|table, cond, data| [table.is_a?(Qx) ? table.parse : table, Qx.interpolate_expr(cond, data)]})
+    @tree[:LEFT_JOIN].concat(Qx.parse_joins(js))
     self
   end
 
@@ -219,21 +228,6 @@ class Qx
     self
   end
 
-  def self.parse_val_params(vals)
-    if vals.is_a?(Array) && vals.first.is_a?(Array)
-      cols = vals.first
-      data = vals[1..-1]
-    elsif vals.is_a?(Array) && vals.first.is_a?(Hash)
-      hashes = vals.map{|h| h.sort.to_h}
-      cols = hashes.first.keys
-      data = hashes.map{|h| h.values}
-    elsif vals.is_a?(Hash)
-      cols = vals.keys
-      data = [vals.values]
-    end
-    return [cols, data]
-  end
-
   # add timestamps to an insert or update
   def ts
     now = "'#{Time.now.utc}'"
@@ -256,6 +250,11 @@ class Qx
     self
   end
 
+  def explain
+    @tree[:EXPLAIN] = true
+    self
+  end
+
   # -- Helpers!
 
   def self.fetch(table_name, data, options={})
@@ -267,6 +266,12 @@ class Qx
     end
     result = expr.execute(options)
     return result
+  end
+
+  # Given a Qx expression, add a LIMIT and OFFSET for pagination
+  def paginate(current_page, page_length)
+    current_page = 1 if current_page.nil? || current_page < 1
+    self.limit(page_length).offset((current_page - 1) * page_length)
   end
 
   # -- utils
@@ -309,6 +314,56 @@ class Qx
       expr.to_s.split('.').map{|s| s == '*' ? s : "\"#{s}\""}.join('.')
     end
   end
+
+private # Internal utils
+
+  # Turn join params into something that .parse can use
+  def self.parse_joins(js)
+    js.map{|table, cond, data| [table.is_a?(Qx) ? table.parse : table, Qx.interpolate_expr(cond, data)]}
+  end
+
+  # Given an array, determine if it has the form
+  # [[join_table, join_on, data], ...]
+  # or
+  # [join_table, join_on, data]
+  # Always return the former format
+  def self.get_join_param(js)
+    js.first.is_a?(Array) ? js : [[js.first, js[1], js[2]]]
+  end
+  
+  # given either a single hash or a string expr + data, parse it into a single string expression
+  def self.parse_wheres(clauses)
+    clauses.map do |expr, data|
+      if expr.is_a?(Hash)
+        expr.map{|key, val| "#{Qx.quote_ident(key)} IN (#{Qx.quote(val)})"}.join(" AND ")
+      else
+        Qx.interpolate_expr(expr, data)
+      end
+    end
+  end
+
+  # Similar to get_joins_params, except each where clause is a pair, not a triplet
+  def self.get_where_params(ws)
+    ws.first.is_a?(Array) ? ws : [[ws.first, ws[1]]]
+  end
+  
+  # given either a single, hash, array of hashes, or csv style, turn it all into csv style
+  # util for INSERT INTO x (y) VALUES z
+  def self.parse_val_params(vals)
+    if vals.is_a?(Array) && vals.first.is_a?(Array)
+      cols = vals.first
+      data = vals[1..-1]
+    elsif vals.is_a?(Array) && vals.first.is_a?(Hash)
+      hashes = vals.map{|h| h.sort.to_h}
+      cols = hashes.first.keys
+      data = hashes.map{|h| h.values}
+    elsif vals.is_a?(Hash)
+      cols = vals.keys
+      data = [vals.values]
+    end
+    return [cols, data]
+  end
+
 
 end
 
