@@ -105,14 +105,30 @@ class Qx
   def self.select(*cols)
     self.new(SELECT: cols)
   end
+  def select(*cols)
+    @tree[:SELECT] = cols
+    self
+  end
   def self.insert_into(table_name)
     self.new(INSERT_INTO: Qx.quote_ident(table_name))
+  end
+  def insert_into(table_name)
+    @tree[:INSERT_INTO] = Qx.quote_ident(table_name)
+    self
   end
   def self.delete_from(table_name)
     self.new(DELETE_FROM: Qx.quote_ident(table_name))
   end
+  def delete_from(table_name)
+    @tree[:DELETE_FROM] = Qx.quote_ident(table_name)
+    self
+  end
   def self.update(table_name)
     self.new(UPDATE: Qx.quote_ident(table_name))
+  end
+  def update(table_name)
+    @tree[:UPDATE] = Qx.quote_ident(table_name)
+    self
   end
 
   # -- Sub-clauses
