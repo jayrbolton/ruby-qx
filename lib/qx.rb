@@ -36,7 +36,9 @@ class Qx
     elsif expr.is_a?(Array)
       return expr.join(",")
     elsif expr[:SELECT]
-      str =  'SELECT '  + expr[:SELECT].join(", ")
+      str =  'SELECT'
+      str += " DISTINCT ON (#{expr[:DISTINCT_ON].map(&:to_s).join(', ')})" if expr[:DISTINCT_ON]
+      str += ' ' + expr[:SELECT].join(", ")
       str += ' FROM ' + expr[:FROM]
       str += expr[:JOIN].map{|from, cond| " JOIN #{from} ON #{cond}"}.join if expr[:JOIN]
       str += expr[:LEFT_JOIN].map{|from, cond| " LEFT JOIN #{from} ON #{cond}"}.join if expr[:LEFT_JOIN]
@@ -134,6 +136,11 @@ class Qx
   # -- Sub-clauses
 
   # - SELECT sub-clauses
+
+  def distinct_on(*cols)
+    @tree[:DISTINCT_ON] = cols
+    self
+  end
 
   def from(expr)
     @tree[:FROM] = Qx.quote_ident(expr)
