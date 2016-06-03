@@ -44,8 +44,8 @@ class QxTest < Minitest::Test
   end
   
   def test_select_and_order_by
-    parsed = Qx.select(:id, "name").from(:table_name).order_by("col1", "col2").parse
-    assert_equal parsed, %Q(SELECT id, name FROM "table_name" ORDER BY col1, col2)
+    parsed = Qx.select(:id, "name").from(:table_name).order_by("col1", ["col2", "DESC NULLS LAST"]).parse
+    assert_equal parsed, %Q(SELECT id, name FROM "table_name" ORDER BY col1 , col2 DESC NULLS LAST)
   end
 
   def test_select_having
@@ -114,7 +114,7 @@ class QxTest < Minitest::Test
       .limit(10)
       .offset(10)
       .parse
-    assert_equal parsed, %Q(SELECT id FROM "table" JOIN (SELECT id FROM "assoc") AS "assoc" ON assoc.table_id=table.id LEFT JOIN lefty ON lefty.table_id=table.id WHERE (x = 1) AND (y = 1) GROUP BY x HAVING (COUNT(x) > 1) AND (COUNT(y) > 1) ORDER BY y LIMIT 10 OFFSET 10)
+    assert_equal parsed, %Q(SELECT id FROM "table" JOIN (SELECT id FROM "assoc") AS "assoc" ON assoc.table_id=table.id LEFT JOIN lefty ON lefty.table_id=table.id WHERE (x = 1) AND (y = 1) GROUP BY x HAVING (COUNT(x) > 1) AND (COUNT(y) > 1) ORDER BY y  LIMIT 10 OFFSET 10)
   end
 
   def test_insert_into_values_hash

@@ -163,9 +163,9 @@ class Qx
   end
 
   def order_by(*cols)
-    orders = ['asc', 'desc']
+    orders = /(asc)|(desc)( nulls (first)|(last))?/i
     # Sanitize out invalid order keywords
-    @tree[:ORDER_BY] = cols.map{|col, order| [col.to_s, orders.include?(order.to_s.downcase) ? order.to_s : nil]}
+    @tree[:ORDER_BY] = cols.map{|col, order| [col.to_s, order.to_s.downcase.strip.match(order.to_s.downcase) ? order.to_s.upcase : nil]}
     self
   end
 
