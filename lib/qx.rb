@@ -298,7 +298,8 @@ class Qx
   def self.interpolate_expr(expr, data={})
     expr.to_s.gsub(/\$\w+/) do |match|
       val = data[match.gsub(/[ \$]*/, '').to_sym]
-      Array(val).map{|x| Qx.quote(x)}.join(", ")
+      vals = val.is_a?(Array) ? val : [val]
+      vals.map{|x| Qx.quote(x)}.join(", ")
     end
   end
 
