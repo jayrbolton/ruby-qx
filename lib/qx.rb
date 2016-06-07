@@ -143,7 +143,7 @@ class Qx
   end
 
   def from(expr)
-    @tree[:FROM] = Qx.quote_ident(expr)
+    @tree[:FROM] = expr.is_a?(Qx) ? expr.parse : expr.to_s
     self
   end
   def as(table_name)
