@@ -7,6 +7,35 @@ This implements a subset of the SQL language that we find most useful so far. Ad
 
 This library uses ActiveRecord for executing SQL, taking advantage of its connection pooling features.
 
+_*Example*_
+
+```rb
+    payments_subquery = Qx.select( "supporter_id", "SUM(gross_amount)", "MAX(date) AS max_date", "MIN(date) AS min_date", "COUNT(*) AS count")
+      .from(:payments)
+      .group_by(:supporter_id)
+      .as(:payments)
+
+    tags_subquery = Qx.select("tag_joins.supporter_id", "ARRAY_AGG(tag_masters.id) AS ids", "ARRAY_AGG(tag_masters.name::text) AS names")
+      .from(:tag_joins)
+      .join(:tag_masters, "tag_masters.id=tag_joins.tag_master_id")
+      .group_by("tag_joins.supporter_id")
+      .as(:tags)
+
+    expr = Qx.select('supporters.id').from(:supporters)
+      .left_join(
+         [tags_subquery, "tags.supporter_id=supporters.id"],
+         [payments_subquery, "payments.supporter_id=supporters.id"]
+       )
+      .where(
+        ["supporters.nonprofit_id=$id", id: np_id.to_i],
+        ["coalesce(supporters.deleted, FALSE) = FALSE"]
+      )
+      .order_by('payments.max_date DESC NULLS LAST')
+      .execute(format: 'csv')
+      
+  # etc etc
+```
+
 # Qx.config(options)
 
 `Qx.config` only takes a hash of options. For `database_url` Include the full database URL, including protocol, username, pass, domain, and database name. You can also pass in a `type_map` option which takes a type map object for converting result values.
