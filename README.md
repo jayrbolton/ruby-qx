@@ -1,15 +1,44 @@
 
 # ruby-qx
 
-A simple SQL expression string constructor in ruby. Do you want to directly write efficient SQL expressions in Ruby, safely using data from Ruby-land, without wrestling with a bloated ORM? Then this is the lib for you.
+A simple SQL expression string constructor in ruby. It allows you to directly and safely write efficient SQL expressions in Ruby, using data from Ruby-land, without wrestling with an ORM.
 
-This is implements a subset of the SQL language that I find most useful. Add new SQL clauses with a PR if you'd like to see more in here.
+This implements a subset of the SQL language that we find most useful so far. Add new SQL clauses with a PR if you'd like to see more in here.
 
 This library uses ActiveRecord for executing SQL, taking advantage of its connection pooling features.
 
+_*Example*_
+
+```rb
+    payments_subquery = Qx.select( "supporter_id", "SUM(gross_amount)", "MAX(date) AS max_date", "MIN(date) AS min_date", "COUNT(*) AS count")
+      .from(:payments)
+      .group_by(:supporter_id)
+      .as(:payments)
+
+    tags_subquery = Qx.select("tag_joins.supporter_id", "ARRAY_AGG(tag_masters.id) AS ids", "ARRAY_AGG(tag_masters.name::text) AS names")
+      .from(:tag_joins)
+      .join(:tag_masters, "tag_masters.id=tag_joins.tag_master_id")
+      .group_by("tag_joins.supporter_id")
+      .as(:tags)
+
+    expr = Qx.select('supporters.id').from(:supporters)
+      .left_join(
+         [tags_subquery, "tags.supporter_id=supporters.id"],
+         [payments_subquery, "payments.supporter_id=supporters.id"]
+       )
+      .where(
+        ["supporters.nonprofit_id=$id", id: np_id.to_i],
+        ["coalesce(supporters.deleted, FALSE) = FALSE"]
+      )
+      .order_by('payments.max_date DESC NULLS LAST')
+      .execute(format: 'csv')
+      
+  # etc etc
+```
+
 # Qx.config(options)
 
-`Qx.config` only takes an argument hash and currently only supports one key: `database_url`. Include the full database URL, including protocol, username, pass, domain, and database name.
+`Qx.config` only takes a hash of options. For `database_url` Include the full database URL, including protocol, username, pass, domain, and database name. You can also pass in a `type_map` option which takes a type map object for converting result values.
 
 ```rb
 require 'qx'
@@ -17,7 +46,7 @@ require 'qx'
 Qx.config(database_url: "postgres://username:password@domain/db_name")
 ```
 
-`.config` is best called once when your app is starting up (eg Rails initializer).
+`.config` is best called once when your app is starting up. In rails you do not need to pass in the database URL, as ActiveRecord will already be initialized and Qx will simply make use of that.
 
 # Qx.execute(sql, options), expr.execute(sql, options)
 
@@ -34,15 +63,13 @@ Qx.execute("SELECT x FROM y WHERE x = $n", n: 1)
 `.execute` takes an optional options hash as its second argument, which can have:
 
 * verbose: defaults to false. Will print the query string if true.
-* format: defaults to 'hash'. If set to 'hash', returns hashes. If set to 'csv', returns a CSV-style array of arrays (see below).
+* format: defaults to 'hash'. If set to 'hash', returns array of hashes. If set to 'csv', returns a CSV-style array of arrays (see below).
 
 ### hash format
 
 By default, `.execute` has the format of `'hash'`. This means it returns an array of hashes, where each hash has its keys set to your selected column names and values set to the result values.
 
-If the result only contains a single hash, then it will return just that single hash without being within an array.
-
-If the result is empty, it returns `nil`.
+If the result is empty, it returns an empty array. All results will be contained in an array.
 
 ### csv format
 
@@ -54,129 +81,10 @@ All the subsequent arrays will be the rows values for every result.
 
 CSV format is useful for exports or for saving memory in large selects.
 
-# SELECT FROM: Qx.select(col1, col2, ...).from(table_name)
 
-```rb
-Qx.select(:col_name1, :col_name2).from('table_name')
-# SELECT "col_name1", "col_name2" FROM "table_name"
+# API
 
-Qx.select('table_name.col_name1', 'table_name.col_name2'].from(:table_name)
-# SELECT "table_name"."col_name1", "table_name"."col_name2" FROM "table_name"
-```
-
-## WHERE: expr.where("sql_expr", data_to_interpolate)
-
-```rb
-expr = Qx.select('col_name').from('table_name')
-
-expr.where('col_name = 123')
-# SELECT col_name FROM table_name WHERE (col_name = 123)
-
-# Interpolation with a hash
-expr.where('col_name = $val', val: 123)
-# SELECT col_name FROM table_name WHERE (col_name = 123)
-
-# Conditional with hash shortcut (similar to rails)
-expr.where(col_name: 123)
-# SELECT col_name FROM table_name WHERE (col_name = 123)
-expr.where(col_name: [123, 456])
-# SELECT col_name FROM table_name WHERE (col_name IN (123, 456))
-```
-
-#### WHERE x AND y: expr.where(x, data_to_interpolate).and_where(y, data_to_interpolate)
-
-You can use `and_where` to chain together conditions using `AND`.
-
-```rb
-expr.where('x=1 OR y=2').and_where('z=4') 
-# SELECT col_name FROM table_name WHERE (x=1 OR y=2) AND (z=4)
-```
-
-## JOINs
-
-### INNER JOIN
-
-Use `.join` for an inner join. Pass in many arrays, where each array has the
-format `[table_to_join, condition_to_join_on, data_to_interpolate]`. The third
-piece, `data_to_interpolate`, can be left out if you dont need it.
-
-
-```rb
-
-expr = Qx.select('table_name.col1', 'joined_table1.col', 'joined_table2.col').from(:table_name)
-  .join(
-    ['joined_table1', 'joined_table1.col = table_name.col']
-  , ['joined_table2', 'joined_table2.col = $id', {id: 123]
-  )
-# SELECT table_name.col1, joined_table1.col, joined_table2.col FROM table_name
-#   JOIN joined_table1 ON joined_table1.col = table_name.col
-#   JOIN joined_table2 ON joined_table2.col = 123
-```
-
-### LEFT OUTER JOIN
-
-Similarly, left outer joins can be achieved with `.left_join`
-
-```rb
-expr = Qx.select('table_name.col1', 'joined_table1.col', 'joined_table2.col').from(:table_name)
-  .left_join(
-    ['joined_table1', 'joined_table1.col = table_name.col']
-  , ['joined_table2', 'joined_table2.col = $id', {id: 123]
-  )
-# SELECT table_name.col1, joined_table1.col, joined_table2.col FROM table_name
-#   LEFT JOIN joined_table1 ON joined_table1.col = table_name.col
-#   LEFT JOIN joined_table2 ON joined_table2.col = 123
-```
-
-## HAVING / ORDER BY / GROUP BY / LIMIT / OFFSET
-
-Many other SELECT clauses can be used as expected:
-
-```rb
-expr = Qx.select('col1').from('table_name')
-  .order_by('created_at DESC')
-  .group_by('status')
-  .having('COUNT(joined_table.id) < 10')
-  .limit(10)
-  .offset(10)
-# SELECT col1 FROM table_name
-#   ORDER BY created_at DESC
-#   GROUP BY status
-#   HAVING COUNT(joined_table.id) < 10
-#   LIMIT 10
-#   OFFSET 10
-```
-
-## subqueries
-
-You can use subqueries in any FROM, JOIN, WHERE, etc. Simply pass in another Qx expression object.
-
-You need to use `expr.as(name)` to alias your subquery
-
-```rb
-subq = Qx.select('table_id', "STRING_AGG(name, ' ')").from("assoc").group_by('table_id').as(:assoc)
-Qx.select('id', 'assoc.name').from('table')
-  .join([subq, 'assoc.table_id=table.id'])
-# SELECT id, assoc.name FROM table
-#   JOIN (
-#     SELECT table_id, STRING_AGG(name, ' ')
-#     FROM assoc
-#     GROUP BY table_id
-#   ) AS assoc
-#     ON assoc.table_id=table.id
-```
-
-You can similarly embed subqueries in a WHERE or a FROM.
-
-# INSERT INTO x VALUES y
-
-
-
-## RETURNING
-
-# UPDATE
-
-# DELETE FROM
+For now, please see [/test/qx_test.rb](/test/qx_test.rb) to see the full API. 
 
 ## shortcut / helper functions
 
@@ -213,27 +121,6 @@ expr = Qx.insert_into(:table_name)
 # VALUES (1, 'common'), (2, 'common')
 ```
 
-# utils
-
-## Performance Optimization Tools
-
-TODO. Since this lib is built with Postgresql, it takes advantage of its performance optimization tools such as EXPLAIN, ANALYZE, and statistics queries.
-
-### EXPLAIN: expr.explain
-
-For performance optimization, you can use an `EXPLAIN` command on a Qx select expression object.
-
-See here: http://www.postgresql.org/docs/8.3/static/using-explain.html
-
-```rb
-Qx.select(:id)
-  .from(:table)
-  .where("id IN ($ids)", ids: [1,2,3,4]) 
-  .explain
-# TODO
-```
-
-
 ## expr.pp (pretty-printing)
 
 This gives a nicely formatted and colorized output of your expression for debugging.
@@ -255,4 +142,24 @@ Simply pass in the page length and the current page to get the paginated results
 Qx.select(:id).from(:table).paginate(2, 30)
 # SELECT id FROM table OFFSET 30 LIMIT 30
 ```
+
+## Performance Optimization Tools
+
+TODO. Since this lib is built with Postgresql, it takes advantage of its performance optimization tools such as EXPLAIN, ANALYZE, and statistics queries.
+
+### EXPLAIN: expr.explain
+
+For performance optimization, you can use an `EXPLAIN` command on a Qx select expression object.
+
+See here: http://www.postgresql.org/docs/8.3/static/using-explain.html
+
+```rb
+Qx.select(:id)
+  .from(:table)
+  .where("id IN ($ids)", ids: [1,2,3,4]) 
+  .explain
+```
+
+
+
 
