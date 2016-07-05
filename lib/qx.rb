@@ -268,8 +268,9 @@ class Qx
     self
   end
 
-  def set(hash)
-    @tree[:SET] = hash.map{|col, val| [Qx.quote_ident(col), Qx.quote(val)]}
+  # Vals can be a raw SQL string or a hash of data
+  def set(vals)
+    @tree[:SET] = vals.is_a?(String) ? vals : vals.map{|col, val| [Qx.quote_ident(col), Qx.quote(val)]}
     self
   end
 
