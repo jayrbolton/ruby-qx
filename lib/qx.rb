@@ -60,7 +60,7 @@ class Qx
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     elsif expr[:UPDATE]
       str =  'UPDATE ' + expr[:UPDATE]
-      str += ' SET ' + expr[:SET].map{|key, val| "#{key} = #{val}"}.join(", ")
+      str += ' SET ' + expr[:SET]
       str += ' FROM ' + expr[:FROM] if expr[:FROM]
       str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
@@ -258,7 +258,7 @@ class Qx
       @tree[:VALUES].first.concat ['created_at', 'updated_at']
       @tree[:VALUES][1] = @tree[:VALUES][1].map{|arr| arr.concat [now, now]}
     elsif @tree[:SET]
-      @tree[:SET].push ['updated_at', now]
+      @tree[:SET] += ", updated_at = #{now}"
     end
     self
   end
@@ -270,7 +270,10 @@ class Qx
 
   # Vals can be a raw SQL string or a hash of data
   def set(vals)
-    @tree[:SET] = vals.is_a?(String) ? vals : vals.map{|col, val| [Qx.quote_ident(col), Qx.quote(val)]}
+    if vals.is_a? Hash
+      vals = vals.map{|key, val| "#{Qx.quote_ident(key)} = #{Qx.quote(val)}"}.join(", ")
+    end
+    @tree[:SET] = vals.to_s
     self
   end
 
