@@ -28,6 +28,24 @@ class Qx
     end
   end
 
+  def self.parse_select(expr)
+    str =  'SELECT'
+    str += " DISTINCT ON (#{expr[:DISTINCT_ON].map(&:to_s).join(', ')})" if expr[:DISTINCT_ON]
+    str += ' ' + expr[:SELECT].join(", ")
+    str += ' FROM ' + expr[:FROM]
+    str += expr[:JOIN].map{|from, cond| " JOIN #{from} ON #{cond}"}.join if expr[:JOIN]
+    str += expr[:LEFT_JOIN].map{|from, cond| " LEFT JOIN #{from} ON #{cond}"}.join if expr[:LEFT_JOIN]
+    str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
+    str += ' GROUP BY ' + expr[:GROUP_BY].join(", ") if expr[:GROUP_BY]
+    str += ' HAVING ' + expr[:HAVING].map{|h| "(#{h})"}.join(" AND ") if expr[:HAVING]
+    str += ' ORDER BY ' + expr[:ORDER_BY].map{|col, order| col + (order ? ' ' + order : '')}.join(", ") if expr[:ORDER_BY]
+    str += ' LIMIT ' + expr[:LIMIT] if expr[:LIMIT]
+    str += ' OFFSET ' + expr[:OFFSET] if expr[:OFFSET]
+    str = "(#{str}) AS #{expr[:AS]}" if expr[:AS]
+    str = "EXPLAIN #{str}" if expr[:EXPLAIN]
+    return str
+  end
+
   # Parse a Qx expression tree into a single query string that can be executed
   # http://www.postgresql.org/docs/9.0/static/sql-commands.html
   def self.parse(expr)
@@ -35,25 +53,16 @@ class Qx
       return expr # already parsed
     elsif expr.is_a?(Array)
       return expr.join(",")
-    elsif expr[:SELECT]
-      str =  'SELECT'
-      str += " DISTINCT ON (#{expr[:DISTINCT_ON].map(&:to_s).join(', ')})" if expr[:DISTINCT_ON]
-      str += ' ' + expr[:SELECT].join(", ")
-      str += ' FROM ' + expr[:FROM]
-      str += expr[:JOIN].map{|from, cond| " JOIN #{from} ON #{cond}"}.join if expr[:JOIN]
-      str += expr[:LEFT_JOIN].map{|from, cond| " LEFT JOIN #{from} ON #{cond}"}.join if expr[:LEFT_JOIN]
-      str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
-      str += ' GROUP BY ' + expr[:GROUP_BY].join(", ") if expr[:GROUP_BY]
-      str += ' HAVING ' + expr[:HAVING].map{|h| "(#{h})"}.join(" AND ") if expr[:HAVING]
-      str += ' ORDER BY ' + expr[:ORDER_BY].map{|col, order| col + (order ? ' ' + order : '')}.join(", ") if expr[:ORDER_BY]
-      str += ' LIMIT ' + expr[:LIMIT] if expr[:LIMIT]
-      str += ' OFFSET ' + expr[:OFFSET] if expr[:OFFSET]
-      str = "(#{str}) AS #{expr[:AS]}" if expr[:AS]
-      str = "EXPLAIN #{str}" if expr[:EXPLAIN]
     elsif expr[:INSERT_INTO]
-      str =  "INSERT INTO #{expr[:INSERT_INTO]} (#{expr[:VALUES].first.join(", ")})"
-      str += " VALUES #{expr[:VALUES][1].map{|vals| "(#{vals.join(", ")})"}.join(", ")}"
-      str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
+      str =  "INSERT INTO #{expr[:INSERT_INTO]} (#{expr[:INSERT_COLUMNS].join(", ")})"
+      if expr[:SELECT]
+        str += ' ' + parse_select(expr)
+      else
+        str += " VALUES #{expr[:VALUES].map{|vals| "(#{vals.join(", ")})"}.join(", ")}"
+        str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
+      end
+    elsif expr[:SELECT]
+      str = parse_select(expr)
     elsif expr[:DELETE_FROM]
       str =  'DELETE FROM ' + expr[:DELETE_FROM]
       str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
@@ -75,6 +84,7 @@ class Qx
     expr = Qx.parse(@tree).to_s.encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: '')
     return Qx.execute_raw(expr, options)
   end
+  alias_method :ex, :execute
 
   # Can pass in an expression string or another Qx object
   # Qx.execute("SELECT id FROM table_name", {format: 'csv'})
@@ -111,11 +121,12 @@ class Qx
     @tree[:SELECT] = cols
     self
   end
-  def self.insert_into(table_name)
-    self.new(INSERT_INTO: Qx.quote_ident(table_name))
+  def self.insert_into(table_name, cols=[])
+    self.new(INSERT_INTO: Qx.quote_ident(table_name), INSERT_COLUMNS: cols.map{|c| Qx.quote_ident(c)})
   end
-  def insert_into(table_name)
+  def insert_into(table_name, cols=[])
     @tree[:INSERT_INTO] = Qx.quote_ident(table_name)
+    @tree[:INSERT_COLUMNS] = cols.map{|c| Qx.quote_ident(c)}
     self
   end
   def self.delete_from(table_name)
@@ -236,7 +247,8 @@ class Qx
       cols = vals.keys
       data = [vals.values]
     end
-    @tree[:VALUES] = [cols.map{|c| Qx.quote_ident(c)}, data.map{|vals| vals.map{|d| Qx.quote(d)}}]
+    @tree[:VALUES] = data.map{|vals| vals.map{|d| Qx.quote(d)}}
+    @tree[:INSERT_COLUMNS] = cols.map{|c| Qx.quote_ident(c)}
     self
   end
 
@@ -244,10 +256,8 @@ class Qx
   def common_values(h)
     cols = h.keys.map{|col| Qx.quote_ident(col)}
     data = h.values.map{|val| Qx.quote(val)}
-    @tree[:VALUES] = [
-      @tree[:VALUES].first.concat(cols),
-      @tree[:VALUES].last.map{|row| row.concat(data)}
-    ]
+    @tree[:VALUES] = @tree[:VALUES].map{|row| row.concat(data)}
+    @tree[:INSERT_COLUMNS] = @tree[:INSERT_COLUMNS].concat(cols)
     self
   end
 
@@ -255,13 +265,14 @@ class Qx
   def ts
     now = "'#{Time.now.utc}'"
     if @tree[:VALUES]
-      @tree[:VALUES].first.concat ['created_at', 'updated_at']
-      @tree[:VALUES][1] = @tree[:VALUES][1].map{|arr| arr.concat [now, now]}
+      @tree[:INSERT_COLUMNS].concat ['created_at', 'updated_at']
+      @tree[:VALUES] = @tree[:VALUES].map{|arr| arr.concat [now, now]}
     elsif @tree[:SET]
       @tree[:SET] += ", updated_at = #{now}"
     end
     self
   end
+  alias_method :timestamps, :ts
 
   def returning(*cols)
     @tree[:RETURNING] = cols.map{|c| Qx.quote_ident(c)}

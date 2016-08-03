@@ -145,6 +145,10 @@ class QxTest < Minitest::Test
     parsed = Qx.insert_into(:table_name).values(x: 1).returning('*').parse
     assert_equal parsed, %Q(INSERT INTO "table_name" ("x") VALUES (1) RETURNING *)
   end
+  def test_insert_into_select
+    parsed = Qx.insert_into(:table_name, ['hi']).select('hi').from(:table2).where("x=y").parse
+    assert_equal parsed, %Q(INSERT INTO "table_name" ("hi") SELECT hi FROM table2 WHERE (x=y))
+  end
 
   def test_update_set
     parsed = Qx.update(:table_name).set(x: 1).parse
@@ -152,7 +156,7 @@ class QxTest < Minitest::Test
   end
   def test_update_timestamps
     now = Time.now.utc
-    parsed = Qx.update(:table_name).set(x: 1).ts.parse
+    parsed = Qx.update(:table_name).set(x: 1).timestamps.parse
     assert_equal parsed, %Q(UPDATE "table_name" SET "x" = 1, updated_at = '#{now}')
   end
 
