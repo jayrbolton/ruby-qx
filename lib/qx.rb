@@ -59,8 +59,8 @@ class Qx
         str += ' ' + parse_select(expr)
       else
         str += " VALUES #{expr[:VALUES].map{|vals| "(#{vals.join(", ")})"}.join(", ")}"
-        str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
       end
+      str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     elsif expr[:SELECT]
       str = parse_select(expr)
     elsif expr[:DELETE_FROM]
