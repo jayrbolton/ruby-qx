@@ -32,6 +32,7 @@ class Qx
     str =  'SELECT'
     str += " DISTINCT ON (#{expr[:DISTINCT_ON].map(&:to_s).join(', ')})" if expr[:DISTINCT_ON]
     str += ' ' + expr[:SELECT].join(", ")
+    throw ArgumentError.new("FROM clause is missing for SELECT") unless expr[:FROM]
     str += ' FROM ' + expr[:FROM]
     str += expr[:JOIN].map{|from, cond| " JOIN #{from} ON #{cond}"}.join if expr[:JOIN]
     str += expr[:LEFT_JOIN].map{|from, cond| " LEFT JOIN #{from} ON #{cond}"}.join if expr[:LEFT_JOIN]
@@ -55,6 +56,7 @@ class Qx
       return expr.join(",")
     elsif expr[:INSERT_INTO]
       str =  "INSERT INTO #{expr[:INSERT_INTO]} (#{expr[:INSERT_COLUMNS].join(", ")})"
+      throw ArgumentError.new("VALUES (or SELECT) clause is missing for INSERT INTO") unless expr[:VALUES] || expr[:SELECT]
       if expr[:SELECT]
         str += ' ' + parse_select(expr)
       else
@@ -69,6 +71,7 @@ class Qx
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     elsif expr[:UPDATE]
       str =  'UPDATE ' + expr[:UPDATE]
+      throw ArgumentError.new("SET clause is missing for UPDATE") unless expr[:SET]
       str += ' SET ' + expr[:SET]
       str += ' FROM ' + expr[:FROM] if expr[:FROM]
       str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
