@@ -1,5 +1,6 @@
 require 'uri'
 require 'active_record'
+require 'colorize' # for pretty printing/debugging
     
 
 class Qx
@@ -13,7 +14,6 @@ class Qx
   # Qx.config(database_url: 'postgres://admin:password@localhost/database_name')
   def self.config(h)
     @@type_map = h[:type_map]
-    ActiveRecord::Base.establish_connection(h[:database_url]) if h[:database_url]
   end
 
   # Qx.new, only used internally
@@ -313,6 +313,17 @@ class Qx
   def paginate(current_page, page_length)
     current_page = 1 if current_page.nil? || current_page < 1
     self.limit(page_length).offset((current_page - 1) * page_length)
+  end
+
+  def pp
+    str = self.parse
+    # Colorize some tokens
+    # TODO indent by paren levels
+    str = str
+      .gsub(/(FROM|WHERE|VALUES|SET|SELECT|UPDATE|INSERT INTO|DELETE FROM)/){"#{$1}".blue.bold}
+      .gsub(/(\(|\))/){"#{$1}".cyan}
+      .gsub("$Q$", "'")
+    return str
   end
 
   # -- utils

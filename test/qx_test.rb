@@ -195,4 +195,14 @@ class QxTest < Minitest::Test
     parsed = Qx.select("*").from("table_name").explain.parse
     assert_equal parsed, %Q(EXPLAIN SELECT * FROM table_name)
   end
+
+  def test_pp_select
+    pp = Qx.select("id, name").from("table_name").where(status: 'active').and_where(id: Qx.select("id").from("roles").where(name: "admin")).pp
+    pp2 = Qx.insert_into(:table_name).values([x: 1, y: 2]).pp
+    pp3 = Qx.update(:table_name).set(x: 1, y: 2).where(z: 1, a: 22).pp
+    puts pp
+    puts pp2
+    puts pp3
+    # assert_equal 1, 1
+  end
 end
