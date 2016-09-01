@@ -10,6 +10,7 @@ This implements a subset of the SQL language that we find most useful so far. Ad
 _*Example*_
 
 ```rb
+# A fairly complex query with subqueries inside some joins:
 # Create a select query on the payments table
 payments_subquery = Qx.select( "supporter_id", "SUM(gross_amount)", "MAX(date) AS max_date", "MIN(date) AS min_date", "COUNT(*) AS count")
   .from(:payments)
@@ -25,19 +26,13 @@ tags_subquery = Qx.select("tag_joins.supporter_id", "ARRAY_AGG(tag_masters.id) A
 
 # Combine the above subqueries into a select on the supporters table
 expr = Qx.select('supporters.id').from(:supporters)
-  .left_join(
-     [tags_subquery, "tags.supporter_id=supporters.id"],
-     [payments_subquery, "payments.supporter_id=supporters.id"]
-   )
-  .where(
-    ["supporters.nonprofit_id=$id", id: np_id.to_i],
-    ["coalesce(supporters.deleted, FALSE) = FALSE"]
-  )
+  .left_join(tags_subquery, "tags.supporter_id=supporters.id")
+  .add_left_join(payments_subquery, "payments.supporter_id=supporters.id")
+  .where("supporters.nonprofit_id=$id", id: np_id.to_i)
+  .and_where("coalesce(supporters.deleted, FALSE) = FALSE")
   .order_by('payments.max_date DESC NULLS LAST')
   .execute(format: 'csv')
   
-  # etc etc
-
 # Easy bulk insert
 Qx.insert_into(:table_name).values([{x: 1}, {x: 2}, {x: 3}]).execute
 # Qx also supports insert from selects, like `INSERT INTO x (y) SELECT y FROM x`
@@ -56,7 +51,7 @@ Qx.config(type_map: PG::BasicTypeMapForResults.new(ActiveRecord::Base.connection
 
 # API
 
-Please refer to this test file to see all the SQL constructor methods: [/test/qx_test.rb](/test/qx_test.rb) to see the full API. 
+Please refer to this test file to see all the SQL constructor methods: [/test/qx_test.rb](/test/qx_test.rb)
 
 For each test, see the `assert_equal` line to find the resulting SQL expression. Above that, in the `parsed = ...` line, you can see how the expression was created using Qx.
 
