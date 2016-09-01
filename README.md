@@ -168,4 +168,5 @@ Qx.select(:id)
   .from(:table)
   .where("id IN ($ids)", ids: [1,2,3,4]) 
   .explain
+  .execute
 ```
