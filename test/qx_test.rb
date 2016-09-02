@@ -196,13 +196,39 @@ class QxTest < Minitest::Test
     assert_equal parsed, %Q(EXPLAIN SELECT * FROM table_name)
   end
 
+  # Manually test this one for now
   def test_pp_select
     pp = Qx.select("id, name").from("table_name").where(status: 'active').and_where(id: Qx.select("id").from("roles").where(name: "admin")).pp
     pp2 = Qx.insert_into(:table_name).values([x: 1, y: 2]).pp
     pp3 = Qx.update(:table_name).set(x: 1, y: 2).where(z: 1, a: 22).pp
+    pp_delete = Qx.delete_from(:table_name).where(id: 123).pp
+    puts ""
+    puts "--- pretty print"
     puts pp
     puts pp2
     puts pp3
-    # assert_equal 1, 1
+    puts pp_delete
+    puts "---"
   end
+
+  def test_to_json
+    parsed = Qx.select(:id).from(:users).to_json(:t).parse
+    assert_equal parsed, %Q(SELECT array_to_json(array_agg(row_to_json(t))) FROM (SELECT id FROM users) AS "t")
+  end
+
+  def test_to_json_nested
+    definitions = Qx.select(:part_of_speech, :body)
+      .from(:definitions)
+      .where("word_id=words.id")
+      .order_by("position ASC")
+      .to_json(:ds)
+      .as("definitions")
+    parsed = Qx.select(:text, :pronunciation, definitions)
+      .from(:words)
+      .where("text='autumn'")
+      .to_json(:ws)
+      .parse
+    assert_equal parsed, "SELECT array_to_json(array_agg(row_to_json(ws))) FROM (SELECT text, pronunciation, (SELECT array_to_json(array_agg(row_to_json(ds))) FROM (SELECT part_of_speech, body FROM definitions WHERE (word_id=words.id) ORDER BY position ASC ) AS \"ds\") AS \"definitions\" FROM words WHERE (text='autumn')) AS \"ws\""
+  end
+
 end

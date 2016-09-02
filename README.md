@@ -155,9 +155,83 @@ Qx.select(:id).from(:table).paginate(2, 30)
 # SELECT id FROM table OFFSET 30 LIMIT 30
 ```
 
+## JSON helpers
+
+A helper method, called `.to_json(alias)` allows you to wrap your results in a json blob. Under the hood it composes the postgres functions `array_to_json(array_agg(row_to_json(t)))` to conveniently convert a collection of sql data into a single json blob.
+
+Notice in this example that there is one result with one key called "data", mapped to a single JSON string:
+
+```
+Qx.select(:id, :email).from(:users).to_json(:data).execute
+# SELECT row_to_json(data) AS data FROM (SELECT id, email FROM users) data
+# returns [
+#   { "data" => "[{\"id\": 1, \"email\": \"bob@example.com\"}, {\"id\": 1, \"email\": \"bob@example.com\"}]" }
+# ]
+```
+
+In doing highly nested json, you can call `.to_json(alias)` within different subqueries. This example borrows from a JSON API (jsonapi.org) example:
+
+```rb
+definitions = Qx.select(:part_of_speech, :body)
+  .from("definitions")
+  .where("word_id=words.id")
+  .order_by("position ASC")
+  .to_json("ds")
+
+expr = Qx.select(:text, :pronunciation, definitions.as("definitions"))
+  .from("words")
+  .where("text='autumn'")
+  .to_json("data")
+```
+
+The above nested expression parses into the following sql:
+
+```sql
+SELECT array_to_json(array_agg(row_to_json(data))) AS data
+FROM (
+  SELECT 
+    text
+  , pronunciation
+  , (
+      SELECT array_to_json(array_agg(row_to_json(d)))
+      FROM (
+        SELECT part_of_speech, body
+        FROM definitions
+        WHERE word_id=words.id
+        ORDER BY position asc
+      ) d
+    ) AS definitions
+  FROM words
+  WHERE text = 'autumn'
+) data
+```
+
+And, when executed, will give the following json string:
+
+```json
+{
+  "text": "autumn",
+  "pronunciation": "autumn",
+  "definitions": [
+    {
+        "part_of_speech": "noun",
+        "body": "skilder wearifully uninfolded..."
+    },
+    {
+        "part_of_speech": "verb",
+        "body": "intrafissural fernbird kittly..."
+    },
+    {
+        "part_of_speech": "adverb",
+        "body": "infrugal lansquenet impolarizable..."
+    }
+  ]
+}
+```
+
 ## Performance Optimization Tools
 
-TODO. Since this lib is built with Postgresql, it takes advantage of its performance optimization tools such as EXPLAIN, ANALYZE, and statistics queries.
+Since this lib is built with Postgresql, it takes advantage of its performance optimization tools such as EXPLAIN, ANALYZE, and statistics queries.
 
 ### expr.explain
 

@@ -31,7 +31,7 @@ class Qx
   def self.parse_select(expr)
     str =  'SELECT'
     str += " DISTINCT ON (#{expr[:DISTINCT_ON].map(&:to_s).join(', ')})" if expr[:DISTINCT_ON]
-    str += ' ' + expr[:SELECT].join(", ")
+    str += ' ' + expr[:SELECT].map{|expr| expr.is_a?(Qx) ? expr.parse : expr}.join(", ")
     throw ArgumentError.new("FROM clause is missing for SELECT") unless expr[:FROM]
     str += ' FROM ' + expr[:FROM]
     str += expr[:JOIN].map{|from, cond| " JOIN #{from} ON #{cond}"}.join if expr[:JOIN]
@@ -112,7 +112,14 @@ class Qx
       data = result.map{|h| h}
     end
     result.clear
+    data = data.map{|row| apply_nesting(row)} if options[:nesting]
     return data
+  end
+
+  # helpers for JSON conversion
+  def to_json(name)
+    name = name.to_s
+    Qx.select("array_to_json(array_agg(row_to_json(#{name})))").from(self.as(name))
   end
 
   # -- Top-level clauses
