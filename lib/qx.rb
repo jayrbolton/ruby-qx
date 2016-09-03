@@ -9,6 +9,7 @@ class Qx
   # Include the full url including userpass and database name
   # For example:
   # Qx.config(database_url: 'postgres://admin:password@localhost/database_name')
+  @@type_map = nil
   def self.config(h)
     @@type_map = h[:type_map]
   end
