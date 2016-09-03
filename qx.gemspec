@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'qx'
-  s.version = '0.0.1'
+  s.version = '0.1.0'
   s.date = '2016-05-18'
   s.summary = 'SQL expression builder'
   s.description = 'A expression builder for SQL expressions with Postgresql support'
