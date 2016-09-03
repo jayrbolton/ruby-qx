@@ -1,8 +1,5 @@
-require 'uri'
 require 'active_record'
-require 'colorize' # for pretty printing/debugging
-    
-
+require 'colorize'
 class Qx
 
   ## 

@@ -9,4 +9,7 @@ Gem::Specification.new do |s|
   s.files = 'lib/qx.rb'
   s.homepage = 'https://github.com/jayrbolton/qx'
   s.license = 'MIT'
+  s.add_runtime_dependency 'colorize', '~> 0.8.0'
+  s.add_runtime_dependency 'activerecord', '>= 3.0'
+  s.add_development_dependency 'minitest', '~> 5.9.0'
 end
