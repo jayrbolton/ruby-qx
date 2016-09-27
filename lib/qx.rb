@@ -65,14 +65,16 @@ class Qx
       str = parse_select(expr)
     elsif expr[:DELETE_FROM]
       str =  'DELETE FROM ' + expr[:DELETE_FROM]
-      str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
+      throw ArgumentError.new("WHERE clause is missing for DELETE FROM") unless expr[:WHERE]
+      str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ")
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     elsif expr[:UPDATE]
       str =  'UPDATE ' + expr[:UPDATE]
       throw ArgumentError.new("SET clause is missing for UPDATE") unless expr[:SET]
+      throw ArgumentError.new("WHERE clause is missing for UPDATE") unless expr[:WHERE]
       str += ' SET ' + expr[:SET]
       str += ' FROM ' + expr[:FROM] if expr[:FROM]
-      str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ") if expr[:WHERE]
+      str += ' WHERE ' + expr[:WHERE].map{|w| "(#{w})"}.join(" AND ")
       str += " RETURNING " + expr[:RETURNING].join(", ") if expr[:RETURNING]
     end
     return str
