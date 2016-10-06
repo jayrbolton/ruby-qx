@@ -131,6 +131,10 @@ class Qx
     @tree[:SELECT] = cols
     self
   end
+  def add_select(*cols)
+    @tree[:SELECT].push(cols)
+    self
+  end
   def self.insert_into(table_name, cols=[])
     self.new(INSERT_INTO: Qx.quote_ident(table_name), INSERT_COLUMNS: cols.map{|c| Qx.quote_ident(c)})
   end
