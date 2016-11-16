@@ -28,7 +28,11 @@ class Qx
 
   def self.parse_select(expr)
     str =  'SELECT'
-    str += " DISTINCT ON (#{expr[:DISTINCT_ON].map(&:to_s).join(', ')})" if expr[:DISTINCT_ON]
+    if expr[:DISTINCT_ON]
+      str += " DISTINCT ON (#{expr[:DISTINCT_ON].map(&:to_s).join(', ')})"
+    elsif expr[:DISTINCT]
+      str += " DISTINCT"
+    end
     str += ' ' + expr[:SELECT].map{|expr| expr.is_a?(Qx) ? expr.parse : expr}.join(", ")
     throw ArgumentError.new("FROM clause is missing for SELECT") unless expr[:FROM]
     str += ' FROM ' + expr[:FROM]
@@ -161,6 +165,11 @@ class Qx
   # -- Sub-clauses
 
   # - SELECT sub-clauses
+
+  def distinct
+    @tree[:DISTINCT] = true
+    self
+  end
 
   def distinct_on(*cols)
     @tree[:DISTINCT_ON] = cols

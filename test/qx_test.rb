@@ -19,6 +19,10 @@ class QxTest < Minitest::Test
     parsed = Qx.select(:id, "name").distinct_on(:distinct_col1, :distinct_col2).from(:table_name).parse
     assert_equal parsed, %Q(SELECT DISTINCT ON (distinct_col1, distinct_col2) id, name FROM table_name)
   end
+  def test_select_distinct
+    parsed = Qx.select(:id, "name").distinct.from(:table_name).parse
+    assert_equal parsed, %Q(SELECT DISTINCT id, name FROM table_name)
+  end
 
   def test_select_as
     parsed = Qx.select(:id, "name").from(:table_name).as(:alias).parse
