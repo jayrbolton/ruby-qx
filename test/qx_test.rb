@@ -3,12 +3,23 @@ require 'pg'
 require 'minitest/autorun'
 require 'pry'
 
+ActiveRecord::Base.establish_connection('postgres://admin:password@localhost/qx_test')
+tm = PG::BasicTypeMapForResults.new(ActiveRecord::Base.connection.raw_connection)
+Qx.config(type_map: tm)
+# Execute test schema
+Qx.execute_file('./test/test_schema.sql')
+
 class QxTest < Minitest::Test
 
   def setup
-    ActiveRecord::Base.establish_connection('postgres://admin:password@localhost/qx_test')
-    tm = PG::BasicTypeMapForResults.new(ActiveRecord::Base.connection.raw_connection)
-    Qx.config(type_map: tm)
+  end
+
+  # Let's just test that the schema was executed
+  def test_execute_file
+    email = 'uzzzr@example.com'
+    result = Qx.execute_file('./test/test_insert_user.sql', email: email, id: 1).last
+    Qx.delete_from(:users).where(id: 1).ex
+    assert_equal email, result['email']
   end
 
   def test_select_from
@@ -189,10 +200,10 @@ class QxTest < Minitest::Test
     assert_equal result, [['column1'], ['x']]
   end
   def test_execute_on_instances
-    result = Qx.insert_into(:examples).values(x: 1).execute
-    result = Qx.execute(Qx.select("*").from(:examples).limit(1))
-    assert_equal result, [{'x' => 1, 'y' => nil}]
-    Qx.delete_from(:examples).where(x: 1).execute
+    result = Qx.insert_into(:users).values(id: 1, email: 'uzr@example.com').execute
+    result = Qx.execute(Qx.select("*").from(:users).limit(1))
+    assert_equal result, [{'id' => 1, 'email' => 'uzr@example.com'}]
+    Qx.delete_from(:users).where(id: 1).execute
   end
 
   def test_explain
@@ -233,6 +244,19 @@ class QxTest < Minitest::Test
       .to_json(:ws)
       .parse
     assert_equal parsed, "SELECT array_to_json(array_agg(row_to_json(ws))) FROM (SELECT text, pronunciation, (SELECT array_to_json(array_agg(row_to_json(ds))) FROM (SELECT part_of_speech, body FROM definitions WHERE (word_id=words.id) ORDER BY position ASC ) AS \"ds\") AS \"definitions\" FROM words WHERE (text='autumn')) AS \"ws\""
+  end
+
+  def test_copy_csv_execution
+    data = {'id' => '1', 'email' => 'uzr@example.com'}
+    filename = '/tmp/qx-test.csv'
+    Qx.insert_into(:users).values(data).ex
+    copy = Qx.select("*").from("users").execute(copy_csv: filename)
+    contents = File.open(filename, 'r').read
+    csv_data = contents.split("\n").map{|l| l.split(",")}
+    headers = csv_data.first
+    row = csv_data.last
+    assert_equal data.keys, headers
+    assert_equal data.values, row
   end
 
 end

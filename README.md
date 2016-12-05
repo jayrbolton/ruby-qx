@@ -1,7 +1,7 @@
 
-# ruby-qx
+# Qx
 
-A simple SQL expression string constructor in ruby focused on Postgresql features. It allows you to directly and safely write efficient SQL expressions in Ruby, using data from Ruby-land. These expressions can be passed around, reused, and modified. This lib is for those of us who want to use SQL directly within ruby, and do not want an ORM.
+A ruby SQL expression builder (and executor)  focused on Postgresql. It allows you to directly and safely write efficient SQL expressions in Ruby, using data from Ruby-land. These expressions can be passed around, reused, and modified. This lib is for those of us who want to use SQL directly within ruby, and do not want an ORM.
 
 This library uses ActiveRecord for executing SQL, taking advantage of its connection pooling features. If you'd like to see support for Sequel, etc, please make a PR.
 
@@ -55,7 +55,7 @@ Please refer to this test file to see all the SQL constructor methods: [/test/qx
 
 For each test, see the `assert_equal` line to find the resulting SQL expression. Above that, in the `parsed = ...` line, you can see how the expression was created using Qx.
 
-## `.execute`
+## `expression.execute`
 
 When you have an expression, call `.execute` to actually execute it.
 
@@ -64,6 +64,23 @@ Qx.select("id", "name").from(:users).where(email: "user@example.com").execute
 ```
 
 `.ex` is a shortcut alias
+
+## `Qx.execute_file(path, interpolation_data, options)`
+
+This function will open a sql file and execute its contents. You can interpolate data into the file with `$variable_name`.
+
+Given a sql file like:
+
+```sql
+SELECT * FROM users WHERE account_id=$account_id LIMIT 1
+```
+
+You can execute the file with:
+
+```rb
+Qx.execute_file('./get_user.sql', account_id: 123)
+# -> [{email: 'uzr@example.com', ...}]
+```
 
 ## `.parse`
 
@@ -244,3 +261,12 @@ Qx.select(:id)
   .explain
   .execute
 ```
+
+
+## Development and testing
+
+#### Testing
+
+Set up Postgres on your machine and create a database called `qx_test`. Grant all privileges to a user called `admin` with password `password`
+
+Run tests with `ruby test/qx_test.rb`

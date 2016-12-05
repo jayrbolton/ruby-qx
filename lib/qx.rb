@@ -1,5 +1,6 @@
 require 'active_record'
 require 'colorize'
+
 class Qx
 
   ## 
@@ -107,6 +108,9 @@ class Qx
   #   format: 'csv' | 'hash'    give data csv style with Arrays -- good for exports or for saving memory
   def self.execute_raw(expr, options={})
     puts expr if options[:verbose]
+    if options[:copy_csv]
+      expr = "COPY (#{expr}) TO '#{options[:copy_csv]}' DELIMITER ',' CSV HEADER"
+    end
     result = ActiveRecord::Base.connection.execute(expr)
     result.map_types!(@@type_map) if @@type_map
     if options[:format] == 'csv'
@@ -118,6 +122,10 @@ class Qx
     result.clear
     data = data.map{|row| apply_nesting(row)} if options[:nesting]
     return data
+  end
+
+  def self.execute_file(path, data={}, options={})
+    Qx.execute_raw(Qx.interpolate_expr(File.open(path, 'r').read, data), options)
   end
 
   # helpers for JSON conversion
