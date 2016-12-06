@@ -259,4 +259,10 @@ class QxTest < Minitest::Test
     assert_equal data.values, row
   end
 
+  def test_remove_clause
+    expr = Qx.select("*").from("table").limit(1)
+    expr = expr.remove_clause('limit')
+    assert_equal "SELECT * FROM table", expr.parse
+  end
+
 end

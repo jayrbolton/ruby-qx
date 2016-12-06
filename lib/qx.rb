@@ -396,6 +396,13 @@ class Qx
     end
   end
 
+  # Remove a clause from the sql tree
+  def remove_clause(name)
+    name = name.to_s.upcase.gsub(' ', '_').to_sym
+    @tree.delete(name)
+    return self
+  end
+
 private # Internal utils
 
   # Turn join params into something that .parse can use
