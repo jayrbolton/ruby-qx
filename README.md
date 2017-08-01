@@ -1,3 +1,4 @@
+# This library is deprecated. You can use [Arel](https://github.com/rails/arel) instead
 
 # Qx
 
